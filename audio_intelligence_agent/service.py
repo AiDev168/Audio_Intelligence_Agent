@@ -7,7 +7,7 @@ import mimetypes
 from dataclasses import fields
 from typing import Any
 
-from .core_adapter import CoreCapabilityGateway
+from audio_intelligence_agent.core_adapter import CoreCapabilityGateway
 
 
 TRANSCRIPTION_CACHE_SCHEMA_VERSION = "1"
