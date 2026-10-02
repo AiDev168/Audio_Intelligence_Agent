@@ -124,8 +124,6 @@ def test_transcription_cache_key_changes_with_provider_or_options():
         file_access=FakeFileAccess(),
         settings={},
     )
-
-
     class Core:
         pass
 
@@ -134,7 +132,6 @@ def test_transcription_cache_key_changes_with_provider_or_options():
     context = FakeContext(
         metadata={"media_intelligence_provider_policy": {"transcription": "asr-a"}}
     )
-
     first = service._transcription_cache_key(
         gateway, media, {"transcription_options": {"model": "m1"}}, context
     )
