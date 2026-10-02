@@ -116,3 +116,31 @@ def test_core_gateway_forwards_host_context_without_exposing_provider_objects():
     assert result["capability"] == "transcription"
     assert result["execution_id"] == "exec-1"
     assert result["options"] == {"request_id": "req-1"}
+
+
+def test_transcription_cache_key_changes_with_provider_or_options():
+    service = AudioIntelligenceService(
+        core_service=object(),
+        file_access=FakeFileAccess(),
+        settings={},
+    )
+    class Core:
+        pass
+    gateway = type("Gateway", (), {"core": Core})()
+    media = type("Media", (), {"asset_id": "asset-1"})()
+    context = FakeContext(metadata={"media_intelligence_provider_policy": {"transcription": "asr-a"}})
+
+    first = service._transcription_cache_key(
+        gateway, media, {"transcription_options": {"model": "m1"}}, context
+    )
+    second = service._transcription_cache_key(
+        gateway, media, {"transcription_options": {"model": "m2"}}, context
+    )
+    third_context = FakeContext(
+        metadata={"media_intelligence_provider_policy": {"transcription": "asr-b"}}
+    )
+    third = service._transcription_cache_key(
+        gateway, media, {"transcription_options": {"model": "m1"}}, third_context
+    )
+    assert first != second
+    assert first != third
