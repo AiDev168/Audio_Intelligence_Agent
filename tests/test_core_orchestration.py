@@ -5,8 +5,8 @@ from dataclasses import dataclass, field
 
 import pytest
 
-from agent.core_adapter import CoreCapabilityGateway
-from agent.service import AudioIntelligenceService
+from audio_intelligence_agent.core_adapter import CoreCapabilityGateway
+from audio_intelligence_agent.service import AudioIntelligenceService
 
 
 @dataclass

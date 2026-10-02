@@ -1,4 +1,4 @@
-from agent.manifest import AGENT_MANIFEST
+from audio_intelligence_agent.manifest import AGENT_MANIFEST
 
 
 def test_manifest_has_required_plugin_contract():
