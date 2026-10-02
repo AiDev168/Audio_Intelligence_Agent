@@ -21,7 +21,6 @@ AGENT_MANIFEST = {
             },
             "operation": {
                 "type": "string",
-                "default": "",
                 "enum": [
                     "transcribe",
                     "language",
