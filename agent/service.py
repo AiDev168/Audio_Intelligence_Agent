@@ -228,12 +228,10 @@ class AudioIntelligenceService:
             result["audio_events"] = self._to_public(events)
 
         if operation == "evidence":
-            evidence_query = _construct_option(
-                core.core.AudioEvidenceQuery,
-                {
-                    "query": str(prepared.get("query") or message).strip(),
-                    **(prepared.get("evidence_options") or {}),
-                },
+            evidence_query = self._make_evidence_query(
+                core,
+                str(prepared.get("query") or message).strip(),
+                prepared,
             )
             evidence = await core.execute(
                 CAPABILITY_NAMES["evidence"],
@@ -248,13 +246,7 @@ class AudioIntelligenceService:
 
         if operation == "ask":
             question = str(prepared.get("query") or message).strip()
-            evidence_query = _construct_option(
-                core.core.AudioEvidenceQuery,
-                {
-                    "query": question,
-                    **(prepared.get("evidence_options") or {}),
-                },
-            )
+            evidence_query = self._make_evidence_query(core, question, prepared)
             evidence = await core.execute(
                 CAPABILITY_NAMES["evidence"],
                 media,
@@ -278,6 +270,28 @@ class AudioIntelligenceService:
                 },
             )
             result["answer"] = self._to_public(answer)
+
+        if operation in {
+            "transcribe",
+            "language",
+            "diarize",
+            "speaker_analysis",
+            "search",
+            "topics",
+            "summary",
+            "entities",
+            "audio_events",
+            "evidence",
+            "ask",
+            "analyze",
+        }:
+            result["timeline"] = self._timeline_summary(
+                core,
+                media,
+                transcription,
+                diarization,
+                events,
+            )
 
         return result
 
@@ -335,9 +349,11 @@ class AudioIntelligenceService:
         return "ask"
 
     async def _get_transcription(self, core, media, prepared, session):
-        cached = self._cached_transcription(core, media, session)
-        if cached is not None:
-            return cached
+        cache_enabled = bool(prepared.get("cache_enabled", True))
+        if cache_enabled:
+            cached = self._cached_transcription(core, media, session)
+            if cached is not None:
+                return cached
 
         result = await core.execute(
             CAPABILITY_NAMES["transcription"],
@@ -349,12 +365,64 @@ class AudioIntelligenceService:
                 )
             },
         )
-        state = session.state.setdefault("audio_intelligence", {})
-        assets = state.setdefault("assets", {})
-        assets[media.asset_id] = {
-            "transcription": _serialize_transcription(result),
-        }
+        if cache_enabled:
+            state = session.state.setdefault("audio_intelligence", {})
+            assets = state.setdefault("assets", {})
+            assets[media.asset_id] = {
+                "transcription": _serialize_transcription(result),
+            }
         return result
+
+    def _make_evidence_query(self, core, query_text: str, prepared):
+        options = dict(prepared.get("evidence_options") or {})
+        options.setdefault("limit", int(prepared.get("evidence_limit", self.settings.get("evidence_limit", 20))))
+        options["query"] = query_text
+        return _construct_option(core.core.AudioEvidenceQuery, options)
+
+    def _timeline_summary(self, core, media, transcription, diarization, audio_events):
+        timeline = core.core.MediaTimeline(asset_id=media.asset_id)
+        timeline_item = core.core.TimelineItem
+        for segment in getattr(transcription, "segments", ()):
+            timeline.add(
+                timeline_item(
+                    item_id=segment.segment_id,
+                    interval=segment.interval,
+                    modality="audio",
+                    kind="transcript",
+                    value=segment,
+                    confidence=segment.confidence,
+                    provenance=segment.provenance,
+                )
+            )
+        for turn in getattr(diarization, "turns", ()):
+            timeline.add(
+                timeline_item(
+                    item_id=turn.turn_id,
+                    interval=turn.interval,
+                    modality="speaker",
+                    kind="speaker_turn",
+                    value=turn,
+                    confidence=turn.confidence,
+                    provenance=turn.provenance,
+                )
+            )
+        for event in getattr(audio_events, "events", ()):
+            timeline.add(
+                timeline_item(
+                    item_id=event.event_id,
+                    interval=event.interval,
+                    modality="audio_event",
+                    kind="audio_event",
+                    value=event,
+                    confidence=event.confidence,
+                    provenance=event.provenance,
+                )
+            )
+        return {
+            "asset_id": timeline.asset_id,
+            "item_count": len(timeline.items),
+            "modalities": list(timeline.modalities()),
+        }
 
     def _cached_transcription(self, core, media, session):
         state = session.state.get("audio_intelligence") or {}
