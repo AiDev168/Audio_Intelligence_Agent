@@ -375,7 +375,7 @@ class AudioIntelligenceService:
 
     def _make_evidence_query(self, core, query_text: str, prepared):
         options = dict(prepared.get("evidence_options") or {})
-        options.setdefault("limit", int(prepared.get("evidence_limit", self.settings.get("evidence_limit", 20))))
+        options.setdefault(\n            "limit",\n            int(prepared.get("evidence_limit", self.settings.get("evidence_limit", 20))),\n        )
         options["query"] = query_text
         return _construct_option(core.core.AudioEvidenceQuery, options)
 
