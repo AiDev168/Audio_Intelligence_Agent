@@ -110,7 +110,7 @@ class AudioIntelligenceAgent(BaseAgent):
             yield AgentEvent(
                 type="error",
                 data={
-                    "text": "The configured audio analysis service could not complete this operation.",
+                    "text": (\n                        "The configured audio analysis service could not complete this operation."\n                    ),
                     "execution_id": context.execution_id,
                 },
             )
