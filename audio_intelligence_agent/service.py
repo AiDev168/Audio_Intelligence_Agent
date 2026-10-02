@@ -9,7 +9,6 @@ from typing import Any
 
 from audio_intelligence_agent.core_adapter import CoreCapabilityGateway
 
-
 TRANSCRIPTION_CACHE_SCHEMA_VERSION = "1"
 
 
