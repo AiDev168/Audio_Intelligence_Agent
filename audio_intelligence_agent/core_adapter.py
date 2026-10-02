@@ -1,4 +1,5 @@
 """Adapter between the Ai_cheshm host capability container and Media Core."""
+
 from __future__ import annotations
 
 import asyncio
