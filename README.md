@@ -2,30 +2,42 @@
 
 General-purpose audio understanding Agent for the Ai_cheshm ecosystem.
 
-This repository is an independent user-facing Agent. It is not a second media-processing framework: reusable audio/media capabilities come from Ai_Media_Intelligence_Core, while authentication, sessions, lifecycle, protected files, artifacts, settings and resource governance belong to Ai_cheshm.
+This repository is an independent user-facing Agent. Reusable audio/media capabilities come from Ai_Media_Intelligence_Core, while authentication, sessions, lifecycle, protected files, artifacts, settings and resource governance belong to Ai_cheshm.
 
 ## Status
 
-Phase 1 — Plugin foundation / contract implementation
+Phase 2 — Core orchestration implementation is in progress on:
 
-First implementation branch: feature/audio-agent-plugin-foundation-v1.
+feature/audio-agent-plugin-foundation-v1
+
+Implemented in this branch:
+- Cheshm Manifest and lifecycle adapter
+- protected /storage/... input resolution
+- Media Core dependency injection
+- provider-neutral capability gateway
+- host-to-Core cancellation bridge for raw Core containers
+- transcription with session-scoped asset cache
+- language identification
+- diarization and speaker analysis
+- temporal transcript search
+- topics/chapters
+- summarization
+- entity/keyword extraction
+- audio event analysis
+- evidence preparation
+- grounded Q&A
+- canonical timeline summary
+- protected JSON analysis artifact
+- standard progress/source/done/error/cancelled events
+- contract/unit tests for the plugin boundary
+
+Actual model/provider implementations remain in the shared Core/provider layer.
 
 ## Mission
 
-Turn audio into a reusable, timestamped intelligence timeline and answer grounded questions about:
+Turn audio into a reusable, timestamped intelligence timeline and answer grounded questions about transcription, language, speakers, topics, events and evidence.
 
-1. transcription
-2. language identification
-3. speaker diarization
-4. speaker/turn analysis
-5. temporal transcript search
-6. topic/chapter extraction
-7. summarization
-8. keyword/entity extraction
-9. audio-event analysis
-10. timestamped Q&A/evidence
-
-Supported profiles include podcast, meeting, lecture, interview, call/voice recording and general audio.
+Supported user profiles: general, podcast, meeting, lecture, interview, call.
 
 ## Architecture
 
@@ -35,7 +47,7 @@ Supported profiles include podcast, meeting, lecture, interview, call/voice reco
       v
     Audio Intelligence Agent
       |
-      | domain orchestration
+      | domain orchestration + reuse policy
       v
     Ai_Media_Intelligence_Core
       |
@@ -43,12 +55,13 @@ Supported profiles include podcast, meeting, lecture, interview, call/voice reco
       +-- language identification
       +-- diarization
       +-- speaker analysis
-      +-- transcript search
-      +-- topics/chapters
+      +-- temporal search
+      +-- topics / chapters
       +-- summarization
       +-- entities
       +-- audio events
-      +-- evidence / grounded QA
+      +-- evidence
+      +-- grounded Q&A
       |
       v
     Canonical Media Timeline + Provenance
@@ -56,98 +69,57 @@ Supported profiles include podcast, meeting, lecture, interview, call/voice reco
 ## Non-negotiable boundaries
 
 - The Agent never owns authentication or RBAC.
-- The Agent never creates its own WebSocket server.
-- The Agent never exposes local filesystem paths to the browser.
-- The Agent never imports another user-facing Agent.
+- The Agent never creates its own WebSocket server or execution state machine.
+- User file input must be a protected /storage/... URL.
+- Local paths are resolved only by the host agent_file_access service.
 - Provider-native objects never cross the Core boundary.
-- Long-running work must remain cancellation-aware and resource-bounded.
+- The Agent never imports another user-facing Agent.
+- Long-running work remains cancellation-aware and resource-bounded.
 - Artifacts are returned through the platform artifact contract.
-- Repeated questions must reuse derived analysis instead of retranscribing media.
+- Repeated questions reuse compatible cached analysis instead of retranscribing the same asset.
+- Developer diagnostics remain host-owned and must not be emitted as normal user events.
 
-## Repository contract
+## Execution flow
 
-Planned structure:
+    User request
+        |
+        v
+    AgentRuntime
+        |
+        v
+    AudioIntelligenceAgent.run_with_context()
+        |
+        +--> validate request/dependencies
+        +--> resolve protected media
+        +--> build MediaAsset
+        +--> select minimum required Core capabilities
+        +--> reuse compatible transcript cache
+        +--> build timeline/evidence
+        +--> persist protected analysis artifact
+        +--> emit standard AgentEvents
+        |
+        v
+      done
 
-    agent/
-      __init__.py
-      agent.py
-    tests/
-      unit/
-      integration/
-      platform/
-      e2e/
-    docs/
-      USER_GUIDE.md
-      DEVELOPER_GUIDE.md
-    AGENT_INTEGRATION.md
-    ARCHITECTURE.md
-    CHANGELOG.md
+## Provider policy
 
-## Current integration target
+The Agent does not hard-code WhisperX, pyannote, FFmpeg, an LLM or a specific remote service.
 
-The Agent subclasses core.base_agent.BaseAgent and exposes a Manifest with a stable ID, user guide, audio capabilities, Core dependency, heavy-audio resource profile and text/file outputs.
+When Ai_cheshm injects a Media Core facade, the host owns provider routing. When a raw Core CapabilityContainer is used for local/integration execution, provider selection may be supplied through ExecutionContext metadata under media_intelligence_provider_policy.
 
-Platform lifecycle:
+## Inputs and outputs
 
-    BaseAgent.execute()
-      -> refresh settings
-      -> on_start()
-      -> run_with_context()
-      -> on_finish()
+Input parameters may include audio_file, operation and query.
 
-## Core dependency direction
+Operations: transcribe, language, diarize, speaker_analysis, search, topics, summary, entities, audio_events, evidence, ask and analyze.
 
-    Ai_cheshm
-       |
-    Audio Intelligence Agent
-       |
-    Ai_Media_Intelligence_Core
-       |
-    Providers / deployment policy
+Outputs are standard text and protected file artifacts. Grounded answers may also emit a sources event.
 
-Never create private dependencies on Subtitle, Video or Media Investigator Agents.
+## Verification before integration
 
-## Development principles
+The release gate is not only unit tests. The branch must pass Ruff check/format, Core capability integration, cancellation/cleanup verification, repeated-question reuse, real Ai_cheshm E2E, user isolation and developer-diagnostics isolation.
 
-- Provider selection is explicit: local, remote, local-first or remote-first.
-- Cache keys include asset identity, capability, provider/model/version and meaningful options.
-- Provenance is retained for derived results.
-- Technical diagnostics are developer-only.
-- Temporary media work is cleaned up deterministically.
-- Unit tests are not sufficient; Core/platform integration and a real E2E path are required before integration.
-
-## Roadmap
-
-### Phase 1
-- plugin skeleton
-- Manifest
-- platform lifecycle adapter
-- Core capability wiring
-- settings schema
-- safe media input handling
-- progress/error/artifact events
-- unit/platform contract tests
-
-### Phase 2
-- real transcription provider
-- language identification
-- diarization and speaker analysis
-- reusable timeline/cache
-
-### Phase 3
-- temporal search
-- topics/chapters
-- summarization
-- entities
-- audio events
-- grounded evidence/Q&A
-
-### Phase 4
-- real Ai_cheshm E2E integration
-- resource stress tests
-- cancellation/cleanup verification
-- user isolation verification
-- developer diagnostics verification
+No merge to main is part of this branch until those checks are completed and explicitly authorized.
 
 ## Related contracts
 
