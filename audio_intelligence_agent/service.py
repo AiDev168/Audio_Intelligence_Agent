@@ -1,11 +1,16 @@
 """Audio-domain orchestration for the Ai_cheshm plugin."""
 from __future__ import annotations
 
+import hashlib
+import json
 import mimetypes
 from dataclasses import fields
 from typing import Any
 
 from .core_adapter import CoreCapabilityGateway
+
+
+TRANSCRIPTION_CACHE_SCHEMA_VERSION = "1"
 
 
 CAPABILITY_NAMES = {
@@ -351,7 +356,7 @@ class AudioIntelligenceService:
     async def _get_transcription(self, core, media, prepared, session):
         cache_enabled = bool(prepared.get("cache_enabled", True))
         if cache_enabled:
-            cached = self._cached_transcription(core, media, session)
+            cached = self._cached_transcription(core, media, prepared, session, context)
             if cached is not None:
                 return cached
 
@@ -368,7 +373,9 @@ class AudioIntelligenceService:
         if cache_enabled:
             state = session.state.setdefault("audio_intelligence", {})
             assets = state.setdefault("assets", {})
-            assets[media.asset_id] = {
+            cache_key = self._transcription_cache_key(core, media, prepared, context)
+            assets[cache_key] = {
+                "asset_id": media.asset_id,
                 "transcription": _serialize_transcription(result),
             }
         return result
@@ -427,9 +434,23 @@ class AudioIntelligenceService:
             "modalities": list(timeline.modalities()),
         }
 
-    def _cached_transcription(self, core, media, session):
+    def _transcription_cache_key(self, core, media, prepared, context) -> str:
+        options = prepared.get("transcription_options") or {}
+        policy = context.metadata.get("media_intelligence_provider_policy", {})
+        payload = {
+            "schema_version": TRANSCRIPTION_CACHE_SCHEMA_VERSION,
+            "asset_id": media.asset_id,
+            "capability": CAPABILITY_NAMES["transcription"],
+            "provider": policy.get(CAPABILITY_NAMES["transcription"]),
+            "options": options,
+        }
+        encoded = json.dumps(payload, sort_keys=True, default=str).encode("utf-8")
+        return hashlib.sha256(encoded).hexdigest()
+
+    def _cached_transcription(self, core, media, prepared, session, context):
         state = session.state.get("audio_intelligence") or {}
-        record = (state.get("assets") or {}).get(media.asset_id) or {}
+        cache_key = self._transcription_cache_key(core, media, prepared, context)
+        record = (state.get("assets") or {}).get(cache_key) or {}
         payload = record.get("transcription")
         if not payload:
             return None
