@@ -474,8 +474,7 @@ class AudioIntelligenceService:
 
     @staticmethod
     def _transcript_text(result: Any) -> str:
-        return "
-".join(
+        return "\n".join(
             f"[{item.interval.start:.2f}-{item.interval.end:.2f}] {item.text}"
             for item in result.segments
         )
