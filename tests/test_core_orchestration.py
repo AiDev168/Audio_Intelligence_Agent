@@ -89,6 +89,7 @@ def test_evidence_limit_defaults_to_agent_setting():
         file_access=FakeFileAccess(),
         settings={"evidence_limit": 7},
     )
+
     class Core:
         AudioEvidenceQuery = FakeEvidenceQuery
 
@@ -124,6 +125,7 @@ def test_transcription_cache_key_changes_with_provider_or_options():
         file_access=FakeFileAccess(),
         settings={},
     )
+
     class Core:
         pass
 
