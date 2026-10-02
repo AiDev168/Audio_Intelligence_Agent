@@ -182,12 +182,15 @@ class AudioIntelligenceAgent(BaseAgent):
         else:
             done_data["text"] = "Audio analysis completed."
 
-        yield AgentEvent(type="progress", data={
-            "stage": "completed",
-            "percent": 100,
-            "text": "Audio analysis completed.",
-            "execution_id": context.execution_id,
-        })
+        yield AgentEvent(
+            type="progress",
+            data={
+                "stage": "completed",
+                "percent": 100,
+                "text": "Audio analysis completed.",
+                "execution_id": context.execution_id,
+            },
+        )
         yield AgentEvent(type="done", data=done_data)
 
     @staticmethod
