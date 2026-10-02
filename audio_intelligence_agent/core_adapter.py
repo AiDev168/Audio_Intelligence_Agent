@@ -58,7 +58,7 @@ class CoreCapabilityGateway:
             return result
 
         try:
-            from media_intelligence import CapabilityExecutor, CancellationToken, ExecutionRequest
+            from media_intelligence import CancellationToken, CapabilityExecutor, ExecutionRequest
 
             if self._executor is None:
                 self._cancellation = CancellationToken()
