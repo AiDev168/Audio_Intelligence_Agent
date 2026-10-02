@@ -375,7 +375,10 @@ class AudioIntelligenceService:
 
     def _make_evidence_query(self, core, query_text: str, prepared):
         options = dict(prepared.get("evidence_options") or {})
-        options.setdefault(\n            "limit",\n            int(prepared.get("evidence_limit", self.settings.get("evidence_limit", 20))),\n        )
+        options.setdefault(
+            "limit",
+            int(prepared.get("evidence_limit", self.settings.get("evidence_limit", 20))),
+        )
         options["query"] = query_text
         return _construct_option(core.core.AudioEvidenceQuery, options)
 
@@ -471,7 +474,8 @@ class AudioIntelligenceService:
 
     @staticmethod
     def _transcript_text(result: Any) -> str:
-        return "\n".join(
+        return "
+".join(
             f"[{item.interval.start:.2f}-{item.interval.end:.2f}] {item.text}"
             for item in result.segments
         )
