@@ -1,4 +1,5 @@
 """Audio-domain orchestration for the Ai_cheshm plugin."""
+
 from __future__ import annotations
 
 import hashlib
@@ -123,9 +124,7 @@ class AudioIntelligenceService:
             "evidence",
             "ask",
         }:
-            transcription = await self._get_transcription(
-                core, media, prepared, session, context
-            )
+            transcription = await self._get_transcription(core, media, prepared, session, context)
             result["transcription"] = self._to_public(transcription)
             result["transcript_text"] = self._transcript_text(transcription)
 
