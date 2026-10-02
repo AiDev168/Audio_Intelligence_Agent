@@ -53,10 +53,6 @@ class FakeEvidenceQuery:
     limit: int = 20
 
 
-class FakeCoreModule:
-    AudioEvidenceQuery = FakeEvidenceQuery
-
-
 def test_input_falls_back_to_active_session_file():
     service = AudioIntelligenceService(
         core_service=object(),
@@ -93,7 +89,6 @@ def test_evidence_limit_defaults_to_agent_setting():
         file_access=FakeFileAccess(),
         settings={"evidence_limit": 7},
     )
-    service.settings["evidence_limit"] = 7
     class Core:
         AudioEvidenceQuery = FakeEvidenceQuery
 
