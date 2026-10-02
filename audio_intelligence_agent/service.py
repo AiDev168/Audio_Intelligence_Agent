@@ -125,7 +125,7 @@ class AudioIntelligenceService:
             "ask",
         }:
             transcription = await self._get_transcription(
-                core, media, prepared, session
+                core, media, prepared, session, context
             )
             result["transcription"] = self._to_public(transcription)
             result["transcript_text"] = self._transcript_text(transcription)
@@ -353,7 +353,7 @@ class AudioIntelligenceService:
             return "topics"
         return "ask"
 
-    async def _get_transcription(self, core, media, prepared, session):
+    async def _get_transcription(self, core, media, prepared, session, context):
         cache_enabled = bool(prepared.get("cache_enabled", True))
         if cache_enabled:
             cached = self._cached_transcription(core, media, prepared, session, context)
