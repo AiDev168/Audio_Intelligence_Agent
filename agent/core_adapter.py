@@ -1,6 +1,7 @@
 """Adapter between the Ai_cheshm host capability container and Media Core."""
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 
@@ -11,12 +12,9 @@ class CoreCapabilityError(RuntimeError):
 class CoreCapabilityGateway:
     """Resolve and execute provider-neutral Media Core capabilities.
 
-    Preferred host contract:
-        context.capabilities["media_intelligence_core"]
-
-    The injected service may expose an execute method itself, or it may be a raw
-    Media Core CapabilityContainer. Provider selection stays outside the Agent
-    and is read from host execution metadata when a raw container is used.
+    The preferred host service contract is a platform-injected
+    context.capabilities["media_intelligence_core"] facade. A raw Media
+    Core CapabilityContainer is also supported for local/integration use.
     """
 
     def __init__(self, service: Any, context: Any):
@@ -59,15 +57,14 @@ class CoreCapabilityGateway:
                 return await result
             return result
 
-        container = self.service
         try:
             from media_intelligence import CapabilityExecutor, CancellationToken, ExecutionRequest
 
             if self._executor is None:
                 self._cancellation = CancellationToken()
-                self._executor = CapabilityExecutor(container)
+                self._executor = CapabilityExecutor(self.service)
 
-            provider = self._select_provider(container, capability)
+            provider = self._select_provider(self.service, capability)
             request = ExecutionRequest(
                 capability=capability,
                 media=media,
@@ -75,13 +72,31 @@ class CoreCapabilityGateway:
                 correlation_id=str(self.context.execution_id),
                 options=payload,
             )
-            return await self._executor.execute(request, cancellation=self._cancellation)
+
+            watcher = asyncio.create_task(self._watch_host_cancellation())
+            try:
+                return await self._executor.execute(
+                    request,
+                    cancellation=self._cancellation,
+                )
+            finally:
+                watcher.cancel()
+                await asyncio.gather(watcher, return_exceptions=True)
         except CoreCapabilityError:
             raise
         except Exception as exc:
             raise CoreCapabilityError(
                 f"Media Core capability '{capability}' could not be executed."
             ) from exc
+
+    async def _watch_host_cancellation(self) -> None:
+        if self._cancellation is None:
+            return
+
+        while not self.context.is_cancelled():
+            await asyncio.sleep(0.1)
+
+        self._cancellation.cancel()
 
     def _select_provider(self, container: Any, capability: str) -> str | None:
         try:
