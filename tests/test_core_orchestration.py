@@ -125,6 +125,7 @@ def test_transcription_cache_key_changes_with_provider_or_options():
         settings={},
     )
 
+
     class Core:
         pass
 
