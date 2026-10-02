@@ -128,7 +128,7 @@ def test_transcription_cache_key_changes_with_provider_or_options():
         pass
     gateway = type("Gateway", (), {"core": Core})()
     media = type("Media", (), {"asset_id": "asset-1"})()
-    context = FakeContext(metadata={"media_intelligence_provider_policy": {"transcription": "asr-a"}})
+    context = FakeContext(\n        metadata={"media_intelligence_provider_policy": {"transcription": "asr-a"}}\n    )
 
     first = service._transcription_cache_key(
         gateway, media, {"transcription_options": {"model": "m1"}}, context
