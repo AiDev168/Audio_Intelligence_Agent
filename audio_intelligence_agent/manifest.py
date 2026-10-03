@@ -81,20 +81,6 @@ AGENT_MANIFEST = {
                     "call": "تماس / مکالمه",
                 },
             },
-            "execution_policy": {
-                "group": "تنظیمات عمومی",
-                "type": "string",
-                "title": "سیاست کلی اجرا",
-                "description": "اولویت کلی اجرای محلی یا سرویس ریموت.",
-                "default": "local-first",
-                "enum": ["local", "remote", "local-first", "remote-first"],
-                "enumLabels": {
-                    "local": "فقط محلی",
-                    "remote": "فقط ریموت",
-                    "local-first": "ابتدا محلی، سپس ریموت",
-                    "remote-first": "ابتدا ریموت، سپس محلی",
-                },
-            },
             "transcription_provider_mode": {
                 "group": "تبدیل گفتار به متن — WhisperX / ریموت",
                 "type": "string",
