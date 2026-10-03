@@ -214,8 +214,8 @@ AGENT_MANIFEST = {
                 "enumLabels": {
                     "local": "مدل زبانی محلی",
                     "remote": "مدل زبانی ریموت",
-                    "local-first": "ابتدا محلی، سپس ریموت",
-                    "remote-first": "ابتدا ریموت، سپس محلی",
+                    "local-first": "اولویت محلی؛ در نبود Provider محلی، ریموت",
+                    "remote-first": "اولویت ریموت؛ در نبود Provider ریموت، محلی",
                 },
             },
             "local_semantic_base_url": {
