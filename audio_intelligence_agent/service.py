@@ -10,7 +10,7 @@ from typing import Any
 
 from audio_intelligence_agent.core_adapter import CoreCapabilityGateway
 
-TRANSCRIPTION_CACHE_SCHEMA_VERSION = "1"
+TRANSCRIPTION_CACHE_SCHEMA_VERSION = "2"
 
 
 CAPABILITY_NAMES = {
