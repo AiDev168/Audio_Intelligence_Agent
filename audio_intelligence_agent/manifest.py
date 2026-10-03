@@ -5,8 +5,8 @@ AGENT_MANIFEST = {
     "name": "تحلیلگر هوشمند صوتی",
     "description": (
         "تحلیل فایل‌های صوتی، پیاده‌سازی گفتار، شناسایی گویندگان، موضوعات، "
-        "رویدادها و ارائه پاسخ‌های مستند زمانی.",
-    )
+        "رویدادها و ارائه پاسخ‌های مستند زمانی."
+    ),
     "icon": "🎧",
     "color": "#2563eb",
     "version": "0.3.0",
@@ -97,8 +97,8 @@ AGENT_MANIFEST = {
                 "type": "string",
                 "title": "روش تبدیل گفتار به متن",
                 "description": (
-                    "برای استفاده از WhisperX محلی یا یک سرویس سازگار با API گفتار‌به‌متن.",
-                )
+                    "برای استفاده از WhisperX محلی یا یک سرویس سازگار با API گفتار‌به‌متن."
+                ),
                 "default": "local",
                 "enum": ["local", "remote", "local-first", "remote-first"],
                 "enumLabels": {
@@ -113,8 +113,8 @@ AGENT_MANIFEST = {
                 "title": "نام مدل Whisper",
                 "description": (
                     "اگر مسیر مستقیم مدل را وارد نمی‌کنید، نام مدل یا شناسه محلی مدل را "
-                    "وارد کنید.",
-                )
+                    "وارد کنید."
+                ),
                 "default": "",
                 "showWhen": {
                     "key": "transcription_provider_mode",
@@ -126,8 +126,8 @@ AGENT_MANIFEST = {
                 "title": "مسیر مدل WhisperX",
                 "description": (
                     "مسیر پوشه یا مدل محلی موجود روی همین سیستم؛ در حالت محلی استفاده "
-                    "می‌شود.",
-                )
+                    "می‌شود."
+                ),
                 "default": "",
                 "showWhen": {
                     "key": "transcription_provider_mode",
@@ -151,8 +151,8 @@ AGENT_MANIFEST = {
                 "title": "نوع محاسبه Whisper",
                 "description": (
                     "برای GPU معمولاً float16 مناسب است؛ در CPU می‌توان int8 یا float32 را "
-                    "انتخاب کرد.",
-                )
+                    "انتخاب کرد."
+                ),
                 "default": "float16",
                 "enum": ["default", "float16", "float32", "int8"],
                 "enumLabels": {
@@ -180,8 +180,8 @@ AGENT_MANIFEST = {
                 "type": "string",
                 "title": "نشانی پایه API تبدیل گفتار به متن",
                 "description": (
-                    "برای سرویس OpenAI-compatible؛ معمولاً مانند https://example.com/v1.",
-                )
+                    "برای سرویس OpenAI-compatible؛ معمولاً مانند https://example.com/v1."
+                ),
                 "default": "",
                 "showWhen": {
                     "key": "transcription_provider_mode",
@@ -194,8 +194,8 @@ AGENT_MANIFEST = {
                 "title": "کلید API تبدیل گفتار به متن",
                 "description": (
                     "کلید دسترسی سرویس ریموت. در سامانه به‌صورت رمزنگاری‌شده نگهداری "
-                    "می‌شود.",
-                )
+                    "می‌شود."
+                ),
                 "default": "",
                 "showWhen": {
                     "key": "transcription_provider_mode",
@@ -217,8 +217,8 @@ AGENT_MANIFEST = {
                 "title": "روش مدل زبانی",
                 "description": (
                     "برای خلاصه‌سازی، موضوعات، موجودیت‌ها و پرسش‌وپاسخ از مدل زبانی محلی یا "
-                    "ریموت استفاده می‌شود.",
-                )
+                    "ریموت استفاده می‌شود."
+                ),
                 "default": "remote",
                 "enum": ["local", "remote", "local-first", "remote-first"],
                 "enumLabels": {
@@ -233,8 +233,8 @@ AGENT_MANIFEST = {
                 "title": "نشانی پایه مدل زبانی محلی",
                 "description": (
                     "نشانی سرویس OpenAI-compatible محلی، برای نمونه "
-                    "http://127.0.0.1:1234/v1.",
-                )
+                    "http://127.0.0.1:1234/v1."
+                ),
                 "default": "http://127.0.0.1:1234/v1",
                 "showWhen": {
                     "key": "semantic_provider_mode",
@@ -256,8 +256,8 @@ AGENT_MANIFEST = {
                 "title": "Base URL مدل زبانی ریموت",
                 "description": (
                     "نشانی پایه API سازگار با OpenAI، برای نمونه "
-                    "https://provider.example/v1.",
-                )
+                    "https://provider.example/v1."
+                ),
                 "default": "",
                 "showWhen": {
                     "key": "semantic_provider_mode",
@@ -279,8 +279,8 @@ AGENT_MANIFEST = {
                 "type": "string",
                 "title": "روش تفکیک گویندگان",
                 "description": (
-                    "در حال حاضر تفکیک محلی با WhisperX و مدل‌های pyannote پشتیبانی می‌شود.",
-                )
+                    "در حال حاضر تفکیک محلی با WhisperX و مدل‌های pyannote پشتیبانی می‌شود."
+                ),
                 "default": "local",
                 "enum": ["local"],
                 "enumLabels": {"local": "WhisperX + pyannote"},
@@ -291,8 +291,8 @@ AGENT_MANIFEST = {
                 "title": "کلید Hugging Face برای گویندگان",
                 "description": (
                     "برای مدل‌های تفکیک گویندگان در Hugging Face؛ در سامانه رمزنگاری "
-                    "می‌شود.",
-                )
+                    "می‌شود."
+                ),
                 "default": "",
             },
             "diarization_model": {
@@ -300,16 +300,16 @@ AGENT_MANIFEST = {
                 "title": "مدل تفکیک گویندگان",
                 "description": (
                     "در صورت استفاده از مقدار پیش‌فرض، مدل pyannote در runtime انتخاب "
-                    "می‌شود.",
-                )
+                    "می‌شود."
+                ),
                 "default": "pyannote/speaker-diarization-community-1",
             },
             "remote_semantic_model": {
                 "type": "string",
                 "title": "مدل ریموت",
                 "description": (
-                    "نام مدل زبانی ریموت برای خلاصه‌سازی، موضوعات، موجودیت‌ها و پاسخ مستند.",
-                )
+                    "نام مدل زبانی ریموت برای خلاصه‌سازی، موضوعات، موجودیت‌ها و پاسخ مستند."
+                ),
                 "default": "",
                 "showWhen": {
                     "key": "semantic_provider_mode",
@@ -338,30 +338,30 @@ AGENT_MANIFEST = {
                 "title": "شروع سریع",
                 "text": (
                     "فایل صوتی را بارگذاری کنید و بنویسید «خلاصه کن» یا یکی از عملیات را "
-                    "انتخاب کنید.",
-                )
+                    "انتخاب کنید."
+                ),
             },
             {
                 "title": "آنچه انجام می‌دهد",
                 "text": (
                     "تبدیل گفتار به متن، تشخیص زبان، تفکیک گویندگان، جست‌وجو، موضوعات، "
-                    "خلاصه، موجودیت‌ها، رویدادهای صوتی، شواهد و پرسش‌وپاسخ مستند.",
-                )
+                    "خلاصه، موجودیت‌ها، رویدادهای صوتی، شواهد و پرسش‌وپاسخ مستند."
+                ),
             },
             {
                 "title": "برای خلاصه‌سازی چه چیزی لازم است؟",
                 "text": (
                     "حداقل یک Provider برای تبدیل گفتار به متن و یک مدل زبانی برای "
                     "خلاصه‌سازی لازم است. Whisper فقط متن را تولید می‌کند و به‌تنهایی "
-                    "خلاصه‌ساز نیست.",
-                )
+                    "خلاصه‌ساز نیست."
+                ),
             },
             {
                 "title": "خروجی",
                 "text": (
                     "نتایج در پنل نمایش داده می‌شوند و برای خلاصه، فایل متنی قابل دانلود "
-                    "نیز ساخته می‌شود.",
-                )
+                    "نیز ساخته می‌شود."
+                ),
             },
         ],
     },
