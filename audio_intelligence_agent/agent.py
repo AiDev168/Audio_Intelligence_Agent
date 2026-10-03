@@ -59,7 +59,8 @@ def _error_hint(capability: str | None) -> str:
             "تنظیمات مدل زبانی و پاسخ JSON سرویس را بررسی کنید."
         ),
         "grounded-qa": (
-            "تنظیمات مدل زبانی را بررسی کنید؛ Provider باید پاسخ JSON شامل answer و citations برگرداند."
+            "تنظیمات مدل زبانی را بررسی کنید؛ Provider باید پاسخ JSON شامل "
+            "answer و citations برگرداند."
         ),
         "diarization": (
             "توکن Hugging Face، دسترسی مدل pyannote و سازگاری device را بررسی کنید."
