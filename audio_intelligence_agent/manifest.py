@@ -1,12 +1,12 @@
-"""Platform-facing manifest definition for Audio Intelligence."""
+"""Platform-facing manifest definition for the Persian-first Audio Intelligence Agent."""
 
 AGENT_MANIFEST = {
     "id": "audio_intelligence",
-    "name": "Audio Intelligence",
-    "description": "Understand audio, speakers, topics, events and timestamped evidence.",
+    "name": "تحلیلگر هوشمند صوتی",
+    "description": "تحلیل فایل‌های صوتی، پیاده‌سازی گفتار، شناسایی گویندگان، موضوعات، رویدادها و ارائه پاسخ‌های مستند زمانی.",
     "icon": "🎧",
     "color": "#2563eb",
-    "version": "0.2.0",
+    "version": "0.3.0",
     "tags": ["audio", "speech", "transcription", "diarization", "evidence"],
     "capabilities": ["chat", "file", "media", "audio_intelligence"],
     "params": {
@@ -16,8 +16,8 @@ AGENT_MANIFEST = {
                 "type": "string",
                 "format": "file",
                 "accept": "audio/*",
-                "title": "Audio file",
-                "description": "Select an audio file uploaded to Ai_cheshm.",
+                "title": "فایل صوتی",
+                "description": "یک فایل صوتی را برای تحلیل انتخاب کنید.",
             },
             "operation": {
                 "type": "string",
@@ -35,11 +35,25 @@ AGENT_MANIFEST = {
                     "ask",
                     "analyze",
                 ],
+                "enumLabels": {
+                    "transcribe": "تبدیل گفتار به متن",
+                    "language": "تشخیص زبان",
+                    "diarize": "تفکیک گویندگان",
+                    "speaker_analysis": "تحلیل گویندگان",
+                    "search": "جست‌وجو در متن صوت",
+                    "topics": "موضوعات و فصل‌ها",
+                    "summary": "خلاصه‌سازی",
+                    "entities": "افراد، مکان‌ها و موجودیت‌ها",
+                    "audio_events": "رویدادهای صوتی",
+                    "evidence": "یافتن شواهد زمانی",
+                    "ask": "پرسش و پاسخ مستند",
+                    "analyze": "تحلیل کامل",
+                },
             },
             "query": {
                 "type": "string",
                 "default": "",
-                "title": "Question or search text",
+                "title": "پرسش یا عبارت جست‌وجو",
             },
         },
     },
@@ -50,50 +64,232 @@ AGENT_MANIFEST = {
         "properties": {
             "profile": {
                 "type": "string",
+                "title": "نوع محتوای صوتی",
+                "description": "برای تنظیم پیش‌فرض‌های مناسب تحلیل.",
                 "default": "general",
                 "enum": ["general", "podcast", "meeting", "lecture", "interview", "call"],
+                "enumLabels": {
+                    "general": "عمومی",
+                    "podcast": "پادکست",
+                    "meeting": "جلسه",
+                    "lecture": "سخنرانی / کلاس",
+                    "interview": "مصاحبه",
+                    "call": "تماس / مکالمه",
+                },
             },
             "execution_policy": {
                 "type": "string",
+                "title": "سیاست کلی اجرا",
+                "description": "اولویت کلی اجرای محلی یا سرویس ریموت.",
                 "default": "local-first",
                 "enum": ["local", "remote", "local-first", "remote-first"],
+                "enumLabels": {
+                    "local": "فقط محلی",
+                    "remote": "فقط ریموت",
+                    "local-first": "ابتدا محلی، سپس ریموت",
+                    "remote-first": "ابتدا ریموت، سپس محلی",
+                },
             },
-            "cache_enabled": {"type": "boolean", "default": True},
-            "evidence_limit": {"type": "integer", "default": 20},
+            "transcription_provider_mode": {
+                "type": "string",
+                "title": "روش تبدیل گفتار به متن",
+                "description": "برای استفاده از WhisperX محلی یا یک سرویس سازگار با API گفتار‌به‌متن.",
+                "default": "local",
+                "enum": ["local", "remote", "local-first", "remote-first"],
+                "enumLabels": {
+                    "local": "WhisperX محلی",
+                    "remote": "سرویس ریموت",
+                    "local-first": "ابتدا WhisperX، سپس ریموت",
+                    "remote-first": "ابتدا ریموت، سپس WhisperX",
+                },
+            },
+            "whisper_model": {
+                "type": "string",
+                "title": "نام مدل Whisper",
+                "description": "اگر مسیر مستقیم مدل را وارد نمی‌کنید، نام مدل یا شناسه محلی مدل را وارد کنید.",
+                "default": "",
+                "showWhen": {
+                    "key": "transcription_provider_mode",
+                    "values": ["local", "local-first", "remote-first"],
+                },
+            },
+            "whisper_model_path": {
+                "type": "string",
+                "title": "مسیر مدل WhisperX",
+                "description": "مسیر پوشه یا مدل محلی موجود روی همین سیستم؛ در حالت محلی استفاده می‌شود.",
+                "default": "",
+                "showWhen": {
+                    "key": "transcription_provider_mode",
+                    "values": ["local", "local-first", "remote-first"],
+                },
+            },
+            "whisper_device": {
+                "type": "string",
+                "title": "دستگاه پردازش Whisper",
+                "description": "معمولاً cuda برای کارت گرافیک و cpu برای پردازنده.",
+                "default": "cuda",
+                "enum": ["cuda", "cpu"],
+                "enumLabels": {"cuda": "کارت گرافیک (CUDA)", "cpu": "پردازنده (CPU)"},
+                "showWhen": {
+                    "key": "transcription_provider_mode",
+                    "values": ["local", "local-first", "remote-first"],
+                },
+            },
+            "whisper_compute_type": {
+                "type": "string",
+                "title": "نوع محاسبه Whisper",
+                "description": "برای GPU معمولاً float16 مناسب است؛ در CPU می‌توان int8 یا float32 را انتخاب کرد.",
+                "default": "float16",
+                "enum": ["default", "float16", "float32", "int8"],
+                "enumLabels": {
+                    "default": "خودکار",
+                    "float16": "دقت ۱۶ بیتی",
+                    "float32": "دقت ۳۲ بیتی",
+                    "int8": "۸ بیتی",
+                },
+                "showWhen": {
+                    "key": "transcription_provider_mode",
+                    "values": ["local", "local-first", "remote-first"],
+                },
+            },
+            "whisper_batch_size": {
+                "type": "integer",
+                "title": "اندازه دسته Whisper",
+                "description": "عدد بزرگ‌تر سرعت را بیشتر و مصرف حافظه GPU را بالاتر می‌کند.",
+                "default": 8,
+                "showWhen": {
+                    "key": "transcription_provider_mode",
+                    "values": ["local", "local-first", "remote-first"],
+                },
+            },
+            "remote_transcription_base_url": {
+                "type": "string",
+                "title": "نشانی پایه API تبدیل گفتار به متن",
+                "description": "برای سرویس OpenAI-compatible؛ معمولاً مانند https://example.com/v1.",
+                "default": "",
+                "showWhen": {
+                    "key": "transcription_provider_mode",
+                    "values": ["remote", "local-first", "remote-first"],
+                },
+            },
+            "remote_transcription_api_key": {
+                "type": "string",
+                "format": "password",
+                "title": "کلید API تبدیل گفتار به متن",
+                "description": "کلید دسترسی سرویس ریموت. در سامانه به‌صورت رمزنگاری‌شده نگهداری می‌شود.",
+                "default": "",
+                "showWhen": {
+                    "key": "transcription_provider_mode",
+                    "values": ["remote", "local-first", "remote-first"],
+                },
+            },
+            "remote_transcription_model": {
+                "type": "string",
+                "title": "مدل ریموت تبدیل گفتار به متن",
+                "description": "نام مدلی که سرویس ریموت برای تبدیل گفتار به متن ارائه می‌کند.",
+                "default": "",
+                "showWhen": {
+                    "key": "transcription_provider_mode",
+                    "values": ["remote", "local-first", "remote-first"],
+                },
+            },
+            "semantic_provider_mode": {
+                "type": "string",
+                "title": "روش مدل زبانی",
+                "description": "برای خلاصه‌سازی، موضوعات، موجودیت‌ها و پرسش‌وپاسخ از مدل زبانی محلی یا ریموت استفاده می‌شود.",
+                "default": "remote",
+                "enum": ["local", "remote", "local-first", "remote-first"],
+                "enumLabels": {
+                    "local": "مدل زبانی محلی",
+                    "remote": "مدل زبانی ریموت",
+                    "local-first": "ابتدا محلی، سپس ریموت",
+                    "remote-first": "ابتدا ریموت، سپس محلی",
+                },
+            },
+            "local_semantic_base_url": {
+                "type": "string",
+                "title": "نشانی پایه مدل زبانی محلی",
+                "description": "نشانی سرویس OpenAI-compatible محلی، برای نمونه http://127.0.0.1:1234/v1.",
+                "default": "http://127.0.0.1:1234/v1",
+                "showWhen": {
+                    "key": "semantic_provider_mode",
+                    "values": ["local", "local-first", "remote-first"],
+                },
+            },
+            "local_semantic_model": {
+                "type": "string",
+                "title": "مدل زبانی محلی",
+                "description": "نام مدل فعال روی سرویس محلی.",
+                "default": "",
+                "showWhen": {
+                    "key": "semantic_provider_mode",
+                    "values": ["local", "local-first", "remote-first"],
+                },
+            },
+            "remote_semantic_base_url": {
+                "type": "string",
+                "title": "Base URL مدل زبانی ریموت",
+                "description": "نشانی پایه API سازگار با OpenAI، برای نمونه https://provider.example/v1.",
+                "default": "",
+                "showWhen": {
+                    "key": "semantic_provider_mode",
+                    "values": ["remote", "local-first", "remote-first"],
+                },
+            },
+            "remote_semantic_api_key": {
+                "type": "string",
+                "format": "password",
+                "title": "API Key مدل زبانی ریموت",
+                "description": "کلید API سرویس ریموت؛ در سامانه رمزنگاری می‌شود.",
+                "default": "",
+                "showWhen": {
+                    "key": "semantic_provider_mode",
+                    "values": ["remote", "local-first", "remote-first"],
+                },
+            },
+            "remote_semantic_model": {
+                "type": "string",
+                "title": "مدل ریموت",
+                "description": "نام مدل زبانی ریموت برای خلاصه‌سازی، موضوعات، موجودیت‌ها و پاسخ مستند.",
+                "default": "",
+                "showWhen": {
+                    "key": "semantic_provider_mode",
+                    "values": ["remote", "local-first", "remote-first"],
+                },
+            },
+            "cache_enabled": {
+                "type": "boolean",
+                "title": "استفاده از حافظه موقت",
+                "description": "نتایج سازگار تحلیل مجدد فایل را دوباره استفاده می‌کند.",
+                "default": True,
+            },
+            "evidence_limit": {
+                "type": "integer",
+                "title": "تعداد شواهد در پاسخ",
+                "description": "حداکثر تعداد بخش‌های زمانی که در حالت مستند برگردانده می‌شود.",
+                "default": 20,
+            },
         }
     },
     "guide": {
-        "title": "Audio Intelligence",
-        "summary": "Analyze audio, speakers, topics and timestamped evidence.",
+        "title": "تحلیلگر هوشمند صوتی",
+        "summary": "یک ابزار ساده برای تبدیل صوت به متن، خلاصه‌سازی و تحلیل محتوای صوتی.",
         "sections": [
             {
-                "title": "Quick Start",
-                "text": (
-                    "Upload an audio file, choose an optional operation, then ask for "
-                    "transcription, analysis, search, summary or grounded evidence."
-                ),
+                "title": "شروع سریع",
+                "text": "فایل صوتی را بارگذاری کنید و بنویسید «خلاصه کن» یا یکی از عملیات را انتخاب کنید.",
             },
             {
-                "title": "Supported Inputs",
-                "text": "Use protected audio/media files supplied by Ai_cheshm.",
+                "title": "آنچه انجام می‌دهد",
+                "text": "تبدیل گفتار به متن، تشخیص زبان، تفکیک گویندگان، جست‌وجو، موضوعات، خلاصه، موجودیت‌ها، رویدادهای صوتی، شواهد و پرسش‌وپاسخ مستند.",
             },
             {
-                "title": "Main Capabilities",
-                "text": (
-                    "Transcription, language ID, diarization, speaker analysis, search, "
-                    "chapters, summaries, entities, audio events and timestamped Q&A."
-                ),
+                "title": "برای خلاصه‌سازی چه چیزی لازم است؟",
+                "text": "حداقل یک Provider برای تبدیل گفتار به متن و یک مدل زبانی برای خلاصه‌سازی لازم است. Whisper فقط متن را تولید می‌کند و به‌تنهایی خلاصه‌ساز نیست.",
             },
             {
-                "title": "Outputs",
-                "text": "Text answers, timestamped evidence and protected analysis files.",
-            },
-            {
-                "title": "Resource Expectations",
-                "text": (
-                    "Audio analysis may use CPU/GPU workers. Long operations support "
-                    "platform timeout and cancellation."
-                ),
+                "title": "خروجی",
+                "text": "نتایج در پنل نمایش داده می‌شوند و برای خلاصه، فایل متنی قابل دانلود نیز ساخته می‌شود.",
             },
         ],
     },
