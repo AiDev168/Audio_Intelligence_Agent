@@ -332,7 +332,14 @@ class AudioIntelligenceAgent(BaseAgent):
                 lines.extend(["## پاسخ", "", answer_text, ""])
 
         if result.get("transcript_text"):
-            lines.extend(["## متن پیاده‌سازی‌شده", "", str(result["transcript_text"]).strip(), ""])
+            lines.extend(
+                [
+                    "## متن پیاده‌سازی‌شده",
+                    "",
+                    str(result["transcript_text"]).strip(),
+                    "",
+                ]
+            )
 
         evidence = result.get("evidence")
         if isinstance(evidence, dict):
@@ -357,7 +364,9 @@ class AudioIntelligenceAgent(BaseAgent):
                 start = float(interval.get("start", 0.0) or 0.0)
                 end = float(interval.get("end", 0.0) or 0.0)
                 excerpt = str(citation.get("excerpt") or "").strip()
-                lines.append(f"- **استناد {index}:** {start:.2f} تا {end:.2f} ثانیه — {excerpt}")
+                lines.append(
+                    f"- **استناد {index}:** {start:.2f} تا {end:.2f} ثانیه — {excerpt}"
+                )
             lines.append("")
 
         return "\n".join(lines).rstrip() + "\n"
