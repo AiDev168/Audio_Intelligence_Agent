@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 from typing import Any
 
 
@@ -24,18 +25,18 @@ class CoreCapabilityError(RuntimeError):
     @staticmethod
     def _safe_detail(exc: BaseException) -> str:
         detail = str(exc).strip() or type(exc).__name__
-        replacements = (
-            ("Authorization: Bearer ", "Authorization: Bearer [REDACTED]"),
-            ("authorization=Bearer ", "authorization=Bearer [REDACTED]"),
-            ("api_key=", "api_key=[REDACTED]"),
-            ("api-key=", "api-key=[REDACTED]"),
-            ("token=", "token=[REDACTED]"),
+        detail = re.sub(
+            r"(Authorization:\s*Bearer\s+)[^\s,;]+",
+            r"\1[REDACTED]",
+            detail,
+            flags=re.IGNORECASE,
         )
-        for old_value, new_value in replacements:
-            if old_value in detail:
-                prefix, _, suffix = detail.partition(old_value)
-                suffix = suffix.split()[0] if suffix else ""
-                detail = prefix + new_value + suffix
+        detail = re.sub(
+            r"(\b(?:api_key|api-key|token)\s*=\s*)[^\s,;]+",
+            r"\1[REDACTED]",
+            detail,
+            flags=re.IGNORECASE,
+        )
         return detail[:1200]
 
 
