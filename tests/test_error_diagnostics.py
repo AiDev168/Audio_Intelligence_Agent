@@ -44,7 +44,7 @@ def test_service_execution_failure_is_wrapped_as_core_capability_error() -> None
 
 def test_audio_error_hints_cover_user_relevant_capabilities() -> None:
     assert _CAPABILITY_LABELS["transcription"] == "تبدیل گفتار به متن"
-    assert "whisperx" in _error_hint("transcription").lower()
+    assert "faster-whisper" in _error_hint("transcription").lower()
     assert "api" in _error_hint("summarization").lower()
     assert "hugging face" in _error_hint("diarization").lower()
 
