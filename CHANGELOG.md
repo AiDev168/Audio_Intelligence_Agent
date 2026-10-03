@@ -21,3 +21,10 @@
 - artifact and user-isolation E2E;
 - final CI green status on the completed branch;
 - merge authorization from the repository owner.
+
+### Updated
+- Persian-first user guide with capability descriptions and setting explanations.
+- Explicit remote provider fields: Base URL, API Key and Model.
+- Whisper model path made the primary local-model setting; model name documented as optional.
+- Provider priority wording clarified so local-first/remote-first is not presented as runtime failover.
+- Downloadable TXT summary workflow documented.
