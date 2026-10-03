@@ -115,6 +115,17 @@ Operations: transcribe, language, diarize, speaker_analysis, search, topics, sum
 
 Outputs are standard text and protected file artifacts. Grounded answers may also emit a sources event.
 
+## Independent trace before Host integration
+
+Run the deterministic Agent-only trace before starting Ai_cheshm. It does not load a model, open a network connection, or start the panel; it verifies the Agent orchestration order first:
+
+```powershell
+python tools/trace_orchestration.py --operation summary
+pytest -q tests/test_trace_orchestration.py
+```
+
+Expected summary order is: protected input resolution → media asset creation → transcription capability → summarization capability → timeline/result.
+
 ## Verification before integration
 
 The release gate is not only unit tests. The branch must pass Ruff check/format, Core capability integration, cancellation/cleanup verification, repeated-question reuse, real Ai_cheshm E2E, user isolation and developer-diagnostics isolation.
