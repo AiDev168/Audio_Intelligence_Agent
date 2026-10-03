@@ -17,7 +17,8 @@ from typing import Any
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
-from audio_intelligence_agent.service import AudioIntelligenceService
+
+from audio_intelligence_agent.service import AudioIntelligenceService  # noqa: E402
 
 
 @dataclass(frozen=True)
@@ -54,6 +55,7 @@ class FakeTranscription:
 @dataclass(frozen=True)
 class FakeTranscriptionOptions:
     model: str | None = None
+
 
 @dataclass(frozen=True)
 class FakeSummarizationOptions:
