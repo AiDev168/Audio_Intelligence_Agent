@@ -358,6 +358,9 @@ class AudioIntelligenceService:
             if cached is not None:
                 return cached
 
+        trace_enabled = str(__import__("os").getenv("AUDIO_INTELLIGENCE_TRACE", "")).strip() == "1"
+        if trace_enabled:
+            print("[AGENT TRACE] transcription:core_execute:start", flush=True)
         result = await core.execute(
             CAPABILITY_NAMES["transcription"],
             media,
@@ -368,6 +371,13 @@ class AudioIntelligenceService:
                 )
             },
         )
+        if trace_enabled:
+            print(
+                "[AGENT TRACE] transcription:core_execute:done "
+                f"segments={len(getattr(result, "segments", ()))}, "
+                f"language={getattr(result, "language", None)!s}",
+                flush=True,
+            )
         if cache_enabled:
             state = session.state.setdefault("audio_intelligence", {})
             assets = state.setdefault("assets", {})
