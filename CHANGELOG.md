@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+## Completed integration updates
+
+- Grounded Q&A citations are normalized to the exact Core evidence IDs before Core validation.
+- User-facing `ask`, `evidence` and `analyze` results are exported as readable Markdown instead of raw JSON.
+- `ask` answers are surfaced directly through the standard Host `done` event.
+- The local faster-whisper path remains VAD-free and automatically splits long decoded audio into bounded clips for batched inference.
+- Audio answer display in Cheshm intentionally shows the final answer text in the central chat rather than rendering evidence chunks as separate answer cards.
+
+
 ### Added
 - Cheshm-compatible Audio Intelligence plugin foundation.
 - Complete Manifest parameter and settings contract.
