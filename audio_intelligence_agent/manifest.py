@@ -247,6 +247,27 @@ AGENT_MANIFEST = {
                     "values": ["remote", "local-first", "remote-first"],
                 },
             },
+            "diarization_provider_mode": {
+                "type": "string",
+                "title": "روش تفکیک گویندگان",
+                "description": "در حال حاضر تفکیک محلی با WhisperX و مدل‌های pyannote پشتیبانی می‌شود.",
+                "default": "local",
+                "enum": ["local"],
+                "enumLabels": {"local": "WhisperX + pyannote"},
+            },
+            "diarization_hf_token": {
+                "type": "string",
+                "format": "password",
+                "title": "کلید Hugging Face برای گویندگان",
+                "description": "برای مدل‌های تفکیک گویندگان در Hugging Face؛ در سامانه رمزنگاری می‌شود.",
+                "default": "",
+            },
+            "diarization_model": {
+                "type": "string",
+                "title": "مدل تفکیک گویندگان",
+                "description": "در صورت استفاده از مقدار پیش‌فرض، مدل pyannote در runtime انتخاب می‌شود.",
+                "default": "pyannote/speaker-diarization-community-1",
+            },
             "remote_semantic_model": {
                 "type": "string",
                 "title": "مدل ریموت",
