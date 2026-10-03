@@ -9,6 +9,35 @@ from typing import Any
 class CoreCapabilityError(RuntimeError):
     """Raised when the host cannot satisfy a requested Core capability."""
 
+    def __init__(
+        self,
+        message: str,
+        *,
+        capability: str | None = None,
+        cause: BaseException | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.capability = capability
+        self.cause_type = type(cause).__name__ if cause is not None else None
+        self.detail = self._safe_detail(cause or self)
+
+    @staticmethod
+    def _safe_detail(exc: BaseException) -> str:
+        detail = str(exc).strip() or type(exc).__name__
+        replacements = (
+            ("Authorization: Bearer ", "Authorization: Bearer [REDACTED]"),
+            ("authorization=Bearer ", "authorization=Bearer [REDACTED]"),
+            ("api_key=", "api_key=[REDACTED]"),
+            ("api-key=", "api-key=[REDACTED]"),
+            ("token=", "token=[REDACTED]"),
+        )
+        for old_value, new_value in replacements:
+            if old_value in detail:
+                prefix, _, suffix = detail.partition(old_value)
+                suffix = suffix.split()[0] if suffix else ""
+                detail = prefix + new_value + suffix
+        return detail[:1200]
+
 
 class CoreCapabilityGateway:
     """Resolve and execute provider-neutral Media Core capabilities.
@@ -87,7 +116,9 @@ class CoreCapabilityGateway:
             raise
         except Exception as exc:
             raise CoreCapabilityError(
-                f"Media Core capability '{capability}' could not be executed."
+                f"Media Core capability '{capability}' could not be executed.",
+                capability=capability,
+                cause=exc,
             ) from exc
 
     async def _watch_host_cancellation(self) -> None:
