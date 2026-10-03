@@ -28,3 +28,9 @@
 - Whisper model path made the primary local-model setting; model name documented as optional.
 - Provider priority wording clarified so local-first/remote-first is not presented as runtime failover.
 - Downloadable TXT summary workflow documented.
+
+## Diagnostics
+
+- Core execution failures now preserve capability, exception type and safe diagnostic detail.
+- Caught Core failures are logged with execution IDs and traceback information.
+- Structured error events include actionable stage/hint metadata for the Host UI.
