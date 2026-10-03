@@ -69,7 +69,7 @@ def test_rejects_arbitrary_local_paths():
         file_access=FakeFileAccess(),
         settings={},
     )
-    with pytest.raises(ValueError, match="storage URLs"):
+    with pytest.raises(ValueError, match="فضای امن سامانه"):
         service._validate_storage_url("C:/audio.wav")
 
 
