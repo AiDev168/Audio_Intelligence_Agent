@@ -13,7 +13,7 @@ Agent نباید مستقیماً به WhisperX، pyannote یا یک API خاص 
 
 | Capability | Core contract | Provider مورد نیاز |
 |---|---|---|
-| transcription | `TranscriptionCapability` | WhisperX یا ASR ریموت |
+| transcription | `TranscriptionCapability` | faster-whisper local یا ASR ریموت |
 | language-identification | `LanguageIdentificationCapability` | می‌تواند از transcription همان اجرا استخراج شود |
 | diarization | `DiarizationCapability` | WhisperX/pyannote یا Provider تخصصی |
 | speaker-turn-analysis | `SpeakerTurnAnalysisCapability` | بدون Provider؛ منطق زمانی Core |
@@ -32,7 +32,7 @@ Protected audio
     ↓
 MediaAsset
     ↓
-WhisperX local
+faster-whisper local
     ↓
 TranscriptionResult
     ↓
@@ -117,3 +117,12 @@ Cache transcription باید همچنان شامل asset identity، capability،
 - artifact TXT برای خلاصه
 - اجرای واقعی فایل صوتی قبل از merge
 
+
+
+## Long-audio local ASR contract
+
+The normal local transcription path intentionally keeps `vad_filter=False`. For audio longer than the model chunk length, the Host decodes the real waveform duration and supplies bounded clip ranges (for example 0–30s, 30–45s) to `BatchedInferencePipeline`. This avoids the 30-second single-clip limitation while preserving the no-WhisperX-VAD contract.
+
+## User-facing answer contract
+
+The Agent emits the final grounded answer through the standard `done` event. The Host renders the answer text in the main chat. Source/citation metadata remains available to the platform but is not rendered as a list of transcript chunks in the central answer view.
