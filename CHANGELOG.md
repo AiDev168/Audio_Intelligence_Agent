@@ -34,3 +34,11 @@
 - Core execution failures now preserve capability, exception type and safe diagnostic detail.
 - Caught Core failures are logged with execution IDs and traceback information.
 - Structured error events include actionable stage/hint metadata for the Host UI.
+
+
+## Fast transcript workflow
+
+- Standard transcription is now designed to be provider-optimized at the Host boundary.
+- Summary, topics, entities, search and grounded QA consume canonical transcription and do not inherently require diarization.
+- Basic Q&A/evidence no longer forces the audio-event capability.
+- Heavy speaker/diarization capabilities remain separate and may use WhisperX/Pyannote.
