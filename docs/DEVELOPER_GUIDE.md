@@ -1,37 +1,119 @@
-# Audio Intelligence Agent — Developer Guide
+# راهنمای توسعه‌دهنده — تحلیلگر هوشمند صوتی
 
-## Development order
+## مرز مسئولیت‌ها
 
-1. Keep the platform contract stable.
-2. Wire Core capability contracts.
-3. Add provider adapters without leaking provider-native models.
-4. Add reusable analysis/cache identity.
-5. Add platform tests.
-6. Run real E2E before integration.
+- Ai_cheshm: احراز هویت، فایل، نشست، Artifact، لغو عملیات و تنظیمات.
+- Audio Agent: workflow و orchestration کاربر.
+- Ai_Media_Intelligence_Core: قراردادهای provider-neutral و capabilityها.
+- Host provider assembly: اتصال Providerهای واقعی به Core.
 
-## Cheshm contracts
+Agent نباید مستقیماً به WhisperX، pyannote یا یک API خاص وابسته شود.
 
-- core/base_agent.py
-- core/events.py
-- core/platform/contracts.py
-- core/platform/runtime.py
-- core/platform/registry.py
+## ماتریس Providerها
 
-## Media Core contracts
+| Capability | Core contract | Provider مورد نیاز |
+|---|---|---|
+| transcription | `TranscriptionCapability` | WhisperX یا ASR ریموت |
+| language-identification | `LanguageIdentificationCapability` | می‌تواند از transcription همان اجرا استخراج شود |
+| diarization | `DiarizationCapability` | WhisperX/pyannote یا Provider تخصصی |
+| speaker-turn-analysis | `SpeakerTurnAnalysisCapability` | بدون Provider؛ منطق زمانی Core |
+| temporal-transcript-search | `TemporalTranscriptSearchCapability` | بدون Provider؛ منطق Core |
+| topic-chapter | `TopicChapterCapability` | مدل زبانی |
+| summarization | `SummarizationCapability` | مدل زبانی |
+| entity-extraction | `EntityExtractionCapability` | مدل زبانی |
+| audio-event | `AudioEventCapability` | مدل تشخیص رویداد صوتی |
+| audio-evidence | `AudioEvidenceCapability` | بدون Provider؛ منطق Core |
+| grounded-qa | `GroundedQACapability` | مدل زبانی |
 
-- src/media_intelligence/audio.py
-- src/media_intelligence/transcription.py
-- src/media_intelligence/language.py
-- src/media_intelligence/diarization.py
-- src/media_intelligence/speaker_analysis.py
-- src/media_intelligence/transcript_search.py
-- src/media_intelligence/topic_chapters.py
-- src/media_intelligence/summarization.py
-- src/media_intelligence/entities.py
-- src/media_intelligence/audio_events.py
-- src/media_intelligence/audio_evidence.py
-- src/media_intelligence/grounded_qa.py
+## حداقل مسیر عملیاتی فعلی
 
-## Rule
+```text
+Protected audio
+    ↓
+MediaAsset
+    ↓
+WhisperX local
+    ↓
+TranscriptionResult
+    ↓
+SummarizationCapability
+    ↓
+OpenAI-compatible local/remote LLM
+    ↓
+SummarizationResult
+    ↓
+Host artifact
+    ↓
+TXT download
+```
 
-Do not solve platform problems inside the Agent. Do not solve shared Core problems inside the Agent.
+## تنظیمات Provider
+
+برای ASR محلی:
+
+- `transcription_provider_mode`
+- `whisper_model`
+- `whisper_model_path`
+- `whisper_device`
+- `whisper_compute_type`
+- `whisper_batch_size`
+
+برای ASR ریموت:
+
+- `remote_transcription_base_url`
+- `remote_transcription_api_key`
+- `remote_transcription_model`
+
+برای مدل زبانی محلی:
+
+- `local_semantic_base_url`
+- `local_semantic_model`
+
+برای مدل زبانی ریموت:
+
+- `remote_semantic_base_url`
+- `remote_semantic_api_key`
+- `remote_semantic_model`
+
+برای diarization:
+
+- `diarization_provider_mode`
+- `diarization_hf_token`
+- `diarization_model`
+
+## API Key و Secret
+
+API Key نباید در Manifest، provenance، AgentEvent یا log قرار گیرد.
+
+Cheshm `api_key`, `token`, `secret` و فیلدهای مشابه را از تنظیمات به‌صورت رمزنگاری‌شده نگهداری می‌کند، مشروط به فعال بودن `AI_CHESHM_SECRET_KEY`.
+
+## Cache
+
+Cache transcription باید همچنان شامل asset identity، capability، provider و options باشد تا تغییر مدل یا Provider باعث reuse اشتباه نشود.
+
+## Provider-native object boundary
+
+هیچ‌یک از این‌ها نباید از Core خارج شوند:
+
+- WhisperX pipeline object
+- pyannote pipeline object
+- OpenAI SDK response object
+- raw HTTP response
+
+خروجی عمومی فقط مدل‌های Core است.
+
+## تست
+
+تست‌های حداقلی:
+
+- Manifest فارسی
+- تنظیمات Provider
+- path validation
+- Provider policy
+- WhisperX assembly بدون نیاز به import در زمان startup
+- semantic provider assembly
+- cancellation
+- cache identity
+- artifact TXT برای خلاصه
+- اجرای واقعی فایل صوتی قبل از merge
+
