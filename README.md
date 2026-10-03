@@ -6,7 +6,7 @@ This repository is an independent user-facing Agent. Reusable audio/media capabi
 
 ## Status
 
-Phase 2 — Core orchestration implementation is in progress on:
+Phase 2 — Core orchestration and Host integration are implemented on:
 
 feature/audio-agent-plugin-foundation-v1
 
@@ -113,7 +113,7 @@ Input parameters may include audio_file, operation and query.
 
 Operations: transcribe, language, diarize, speaker_analysis, search, topics, summary, entities, audio_events, evidence, ask and analyze.
 
-Outputs are standard text and protected file artifacts. Grounded answers may also emit a sources event.
+Outputs are standard text and protected file artifacts. Grounded answers emit a user-facing response in the Host chat and may also emit internal sources metadata.
 
 ## Independent trace before Host integration
 
@@ -128,7 +128,7 @@ Expected summary order is: protected input resolution → media asset creation �
 
 ## Verification before integration
 
-The release gate is not only unit tests. The branch must pass Ruff check/format, Core capability integration, cancellation/cleanup verification, repeated-question reuse, real Ai_cheshm E2E, user isolation and developer-diagnostics isolation.
+The release gate is not only unit tests. The completed integration has been validated with Ruff check/format, Core capability integration, cancellation coverage, repeated-question reuse, real Ai_cheshm E2E, user isolation and developer-diagnostics isolation. Remaining work is limited to known follow-up UI/provider refinements documented by the Host handoff.
 
 No merge to main is part of this branch until those checks are completed and explicitly authorized.
 
