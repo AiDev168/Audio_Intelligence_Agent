@@ -168,7 +168,6 @@ async def run(operation: str) -> None:
             "CORE.execute capability=transcription",
             "CORE.execute capability=summarization",
         ]
-        actual = [item.split(" ")[0] if item.startswith("FILE_ACCESS") else item.rsplit(" ", 1)[0] for item in trace]
         print("[TRACE CHECK] summary orchestration completed")
         if not all(any(item.startswith(prefix) for item in trace) for prefix in expected):
             raise SystemExit("TRACE CHECK FAILED: summary orchestration stages are incomplete")
