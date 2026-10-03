@@ -63,6 +63,106 @@ def test_input_falls_back_to_active_session_file():
     assert url == "/storage/audio.wav"
 
 
+def test_selected_audio_document_wins_over_first_active_file():
+    service = AudioIntelligenceService(
+        core_service=object(),
+        file_access=FakeFileAccess(),
+        settings={},
+    )
+
+    class Session:
+        state = {}
+
+        def get_active_files(self):
+            return [
+                {
+                    "document_id": "old-code",
+                    "url": "/storage/app.py",
+                    "name": "app.py",
+                    "mime": "text/x-python",
+                    "active": True,
+                    "legacy": False,
+                },
+                {
+                    "document_id": "new-audio",
+                    "url": "/storage/audio.wav",
+                    "name": "audio.wav",
+                    "mime": "audio/wav",
+                    "active": True,
+                    "legacy": False,
+                },
+            ]
+
+    url = service._resolve_input_url(
+        {"selected_document_ids": ["new-audio"]},
+        Session(),
+    )
+    assert url == "/storage/audio.wav"
+
+
+def test_audio_fallback_ignores_non_audio_active_files():
+    service = AudioIntelligenceService(
+        core_service=object(),
+        file_access=FakeFileAccess(),
+        settings={},
+    )
+
+    class Session:
+        state = {}
+
+        def get_active_files(self):
+            return [
+                {
+                    "document_id": "old-code",
+                    "url": "/storage/app.py",
+                    "name": "app.py",
+                    "mime": "text/x-python",
+                    "active": True,
+                    "legacy": False,
+                },
+                {
+                    "document_id": "new-audio",
+                    "url": "/storage/audio.wav",
+                    "name": "audio.wav",
+                    "mime": "audio/wav",
+                    "active": True,
+                    "legacy": False,
+                },
+            ]
+
+    url = service._resolve_input_url({}, Session())
+    assert url == "/storage/audio.wav"
+
+
+def test_selected_non_audio_document_is_rejected():
+    service = AudioIntelligenceService(
+        core_service=object(),
+        file_access=FakeFileAccess(),
+        settings={},
+    )
+
+    class Session:
+        state = {}
+
+        def get_active_files(self):
+            return [
+                {
+                    "document_id": "code",
+                    "url": "/storage/app.py",
+                    "name": "app.py",
+                    "mime": "text/x-python",
+                    "active": True,
+                    "legacy": False,
+                }
+            ]
+
+    with pytest.raises(ValueError, match="فایل انتخاب‌شده"):
+        service._resolve_input_url(
+            {"selected_document_ids": ["code"]},
+            Session(),
+        )
+
+
 def test_rejects_arbitrary_local_paths():
     service = AudioIntelligenceService(
         core_service=object(),
