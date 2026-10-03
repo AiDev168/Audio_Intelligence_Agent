@@ -41,6 +41,7 @@ class FakeTranscription:
 class FakeTranscriptionOptions:
     model: str | None = None
 
+
 @dataclass(frozen=True)
 class FakeSummarizationOptions:
     max_sentences: int | None = None
