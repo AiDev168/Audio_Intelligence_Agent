@@ -1,0 +1,392 @@
+"""Ai_cheshm plugin entry point for Audio Intelligence."""
+
+from __future__ import annotations
+
+import json
+import logging
+from collections.abc import AsyncIterator
+from typing import Any
+
+from .core_adapter import CoreCapabilityError
+from .manifest import AGENT_MANIFEST
+from .service import AudioIntelligenceService
+
+try:
+    from core.base_agent import BaseAgent, Manifest
+    from core.events import AgentEvent
+    from core.platform.contracts import ExecutionContext
+    from core.session import Session
+except ImportError:
+    BaseAgent = object  # type: ignore[assignment,misc]
+    Manifest = None  # type: ignore[assignment,misc]
+    AgentEvent = Any  # type: ignore[assignment,misc]
+    ExecutionContext = Any  # type: ignore[assignment,misc]
+    Session = Any  # type: ignore[assignment,misc]
+
+
+logger = logging.getLogger("audio_intelligence_agent")
+
+
+_CAPABILITY_LABELS = {
+    "transcription": "تبدیل گفتار به متن",
+    "language-identification": "تشخیص زبان",
+    "diarization": "تفکیک گویندگان",
+    "speaker-turn-analysis": "تحلیل گویندگان",
+    "temporal-transcript-search": "جست‌وجو در متن صوت",
+    "topic-chapter": "موضوعات و فصل‌ها",
+    "summarization": "خلاصه‌سازی",
+    "entity-extraction": "استخراج موجودیت‌ها",
+    "audio-event": "تشخیص رویدادهای صوتی",
+    "audio-evidence": "استخراج شواهد زمانی",
+    "grounded-qa": "پرسش و پاسخ مستند",
+}
+
+
+def _error_hint(capability: str | None) -> str:
+    hints = {
+        "transcription": (
+            "مسیر مدل faster-whisper، وجود faster-whisper در همان Python، "
+            "device/compute type و دسترسی فایل صوتی را بررسی کنید."
+        ),
+        "summarization": (
+            "Base URL، API Key و نام مدل زبانی را بررسی کنید و مطمئن شوید "
+            "سرویس ریموت endpoint سازگار با /chat/completions دارد."
+        ),
+        "topic-chapter": (
+            "تنظیمات مدل زبانی و دسترسی سرویس به /chat/completions را بررسی کنید."
+        ),
+        "entity-extraction": (
+            "تنظیمات مدل زبانی و پاسخ JSON سرویس را بررسی کنید."
+        ),
+        "grounded-qa": (
+            "تنظیمات مدل زبانی را بررسی کنید؛ Provider باید پاسخ JSON شامل "
+            "answer و citations برگرداند."
+        ),
+        "diarization": (
+            "توکن Hugging Face، دسترسی مدل pyannote و سازگاری device را بررسی کنید."
+        ),
+        "audio-event": (
+            "Provider تولیدی تشخیص رویدادهای صوتی هنوز در Host assembly فعال نشده است."
+        ),
+    }
+    return hints.get(
+        str(capability or ""),
+        "جزئیات فنی و تنظیمات Provider این قابلیت را بررسی کنید.",
+    )
+
+
+class AudioIntelligenceAgent(BaseAgent):
+    """User-facing Audio Intelligence plugin."""
+
+    if Manifest is not None:
+        manifest = Manifest(**AGENT_MANIFEST)
+    else:
+        manifest = AGENT_MANIFEST
+
+    async def run_with_context(
+        self,
+        message: str,
+        params: dict[str, Any],
+        session: Session,
+        context: ExecutionContext,
+    ) -> AsyncIterator[AgentEvent]:
+        if context.is_cancelled():
+            yield AgentEvent(type="cancelled", data={"execution_id": context.execution_id})
+            return
+
+        if not str(message or "").strip() and not any(
+            str(params.get(key) or "").strip() for key in ("operation", "query", "audio_file")
+        ):
+            yield AgentEvent(
+                type="error",
+                data={
+                    "text": "لطفاً درخواست صوتی خود را وارد کنید.",
+                    "execution_id": context.execution_id,
+                },
+            )
+            return
+
+        file_access = context.capabilities.get("agent_file_access")
+        artifact_store = context.capabilities.get("artifact_store")
+        media_core = context.capabilities.get("media_intelligence_core")
+        missing = [
+            name
+            for name, value in (
+                ("agent_file_access", file_access),
+                ("artifact_store", artifact_store),
+                ("media_intelligence_core", media_core),
+            )
+            if value is None
+        ]
+        if missing:
+            yield AgentEvent(
+                type="error",
+                data={
+                    "text": "تحلیلگر هوشمند صوتی در پلتفرم به‌طور کامل تنظیم نشده است.",
+                    "execution_id": context.execution_id,
+                    "missing_capability_count": len(missing),
+                },
+            )
+            return
+
+        yield AgentEvent(
+            type="thinking",
+            data={
+                "text": "در حال آماده‌سازی تحلیل صوتی...",
+                "execution_id": context.execution_id,
+            },
+        )
+
+        try:
+            service = AudioIntelligenceService(
+                core_service=media_core,
+                file_access=file_access,
+                settings=self.settings,
+            )
+            result = await service.execute(
+                message=str(message or ""),
+                params=dict(params or {}),
+                session=session,
+                context=context,
+            )
+        except (ValueError, FileNotFoundError, PermissionError) as exc:
+            logger.exception(
+                "Audio input/workflow failure: execution_id=%s error_type=%s",
+                context.execution_id,
+                type(exc).__name__,
+            )
+            yield AgentEvent(
+                type="error",
+                data={
+                    "text": str(exc),
+                    "execution_id": context.execution_id,
+                    "error_code": "audio_input_or_workflow_error",
+                    "stage": "input_or_workflow",
+                    "cause_type": type(exc).__name__,
+                    "detail": str(exc)[:1200],
+                    "hint": (
+                        "فایل صوتی، دسترسی آن و operation/پارامترهای درخواست را بررسی کنید."
+                    ),
+                },
+            )
+            return
+        except CoreCapabilityError as exc:
+            logger.exception(
+                "Audio execution failed: execution_id=%s capability=%s error_type=%s",
+                context.execution_id,
+                exc.capability or "unknown",
+                exc.cause_type or type(exc).__name__,
+            )
+            capability = exc.capability
+            label = _CAPABILITY_LABELS.get(capability or "", "تحلیل صوتی")
+            yield AgentEvent(
+                type="error",
+                data={
+                    "text": f"مرحله «{label}» نتوانست عملیات را کامل کند.",
+                    "execution_id": context.execution_id,
+                    "error_code": "audio_core_capability_failed",
+                    "stage": label,
+                    "capability": capability or "",
+                    "cause_type": exc.cause_type or type(exc).__name__,
+                    "detail": exc.detail,
+                    "hint": _error_hint(capability),
+                },
+            )
+            return
+
+        if context.is_cancelled():
+            yield AgentEvent(
+                type="cancelled",
+                data={
+                    "text": "تحلیل صوتی متوقف شد.",
+                    "execution_id": context.execution_id,
+                },
+            )
+            return
+
+        report = self._build_downloadable_report(result, context)
+        if report is not None:
+            report_url, filename, file_format = self._save_report(
+                report["content"],
+                filename=report["filename"],
+                artifact_store=artifact_store,
+            )
+            if report_url:
+                yield AgentEvent(
+                    type="artifact",
+                    data={
+                        "type": "file",
+                        "title": filename,
+                        "url": report_url,
+                        "agent_id": context.agent_id,
+                        "meta": {
+                            "operation": result.get("operation"),
+                            "asset_id": result.get("asset_id"),
+                            "format": file_format,
+                        },
+                    },
+                )
+
+        answer = result.get("answer")
+        if isinstance(answer, dict):
+            citations = answer.get("citations") or []
+            if citations:
+                yield AgentEvent(
+                    type="sources",
+                    data={
+                        "execution_id": context.execution_id,
+                        "sources": [
+                            {
+                                "evidence_id": item.get("evidence_id"),
+                                "asset_id": item.get("asset_id"),
+                                "start": (item.get("interval") or {}).get("start"),
+                                "end": (item.get("interval") or {}).get("end"),
+                                "text": item.get("excerpt"),
+                            }
+                            for item in citations
+                            if isinstance(item, dict)
+                        ],
+                    },
+                )
+
+        done_data = {
+            "execution_id": context.execution_id,
+            "status": "completed",
+            "operation": result.get("operation"),
+            "asset_id": result.get("asset_id"),
+        }
+        if isinstance(answer, dict) and answer.get("answer"):
+            done_data["text"] = str(answer["answer"])
+            done_data["question"] = str(answer.get("question") or "")
+            done_data["citations"] = answer.get("citations") or []
+        elif result.get("transcript_text"):
+            done_data["text"] = "تبدیل گفتار به متن با موفقیت انجام شد."
+        elif result.get("summary"):
+            done_data["text"] = "تحلیل صوتی با موفقیت انجام شد."
+        else:
+            done_data["text"] = "Audio analysis completed."
+
+        yield AgentEvent(
+            type="progress",
+            data={
+                "stage": "completed",
+                "percent": 100,
+                "text": "تحلیل صوتی با موفقیت انجام شد.",
+                "execution_id": context.execution_id,
+            },
+        )
+        yield AgentEvent(type="done", data=done_data)
+
+    @staticmethod
+    def _build_downloadable_report(
+        result: dict[str, Any],
+        context: ExecutionContext,
+    ) -> dict[str, str] | None:
+        operation = result.get("operation")
+
+        if operation == "summary":
+            summary = result.get("summary")
+            text = summary.get("summary") if isinstance(summary, dict) else None
+            if isinstance(text, str) and text.strip():
+                return {
+                    "content": text.strip() + "\n",
+                    "filename": f"audio_summary_{context.execution_id}.txt",
+                }
+
+        if operation in {"ask", "evidence", "analyze"}:
+            return {
+                "content": AudioIntelligenceAgent._build_markdown_report(result),
+                "filename": f"audio_{operation}_{context.execution_id}.md",
+            }
+
+        # Keep structured JSON internally useful for operations that do not
+        # yet have a dedicated human-readable export contract.
+        content = json.dumps(result, ensure_ascii=False, indent=2, default=str)
+        return {
+            "content": content,
+            "filename": f"audio_analysis_{context.execution_id}.json",
+        }
+
+    @staticmethod
+    def _build_markdown_report(result: dict[str, Any]) -> str:
+        lines = ["# گزارش تحلیل صوتی", ""]
+
+        operation_labels = {
+            "ask": "پرسش و پاسخ مستند",
+            "evidence": "شواهد زمانی",
+            "analyze": "تحلیل کامل صوت",
+        }
+        operation = str(result.get("operation") or "")
+        lines.append(f"**عملیات:** {operation_labels.get(operation, operation)}")
+        lines.append(f"**شناسه فایل:** `{result.get('asset_id', '—')}`")
+        lines.append(f"**نوع رسانه:** `{result.get('media_type', '—')}`")
+        lines.append("")
+
+        answer = result.get("answer")
+        if isinstance(answer, dict):
+            question = str(answer.get("question") or "").strip()
+            answer_text = str(answer.get("answer") or "").strip()
+            if question:
+                lines.extend(["## پرسش", "", question, ""])
+            if answer_text:
+                lines.extend(["## پاسخ", "", answer_text, ""])
+
+        if result.get("transcript_text"):
+            lines.extend(
+                [
+                    "## متن پیاده‌سازی‌شده",
+                    "",
+                    str(result["transcript_text"]).strip(),
+                    "",
+                ]
+            )
+
+        evidence = result.get("evidence")
+        if isinstance(evidence, dict):
+            spans = evidence.get("spans") or []
+            if spans:
+                lines.extend(["## شواهد و استنادها", ""])
+                for index, span in enumerate(spans, start=1):
+                    interval = span.get("interval") or {}
+                    start = float(interval.get("start", 0.0) or 0.0)
+                    end = float(interval.get("end", 0.0) or 0.0)
+                    excerpt = str(span.get("excerpt") or "").strip()
+                    lines.append(f"### شواهد {index} — {start:.2f} تا {end:.2f} ثانیه")
+                    lines.append("")
+                    lines.append(f"> {excerpt}")
+                    lines.append("")
+
+        if isinstance(answer, dict) and answer.get("citations"):
+            citation_spans = answer["citations"]
+            lines.extend(["### استنادهای استفاده‌شده", ""])
+            for index, citation in enumerate(citation_spans, start=1):
+                interval = citation.get("interval") or {}
+                start = float(interval.get("start", 0.0) or 0.0)
+                end = float(interval.get("end", 0.0) or 0.0)
+                excerpt = str(citation.get("excerpt") or "").strip()
+                lines.append(
+                    f"- **استناد {index}:** {start:.2f} تا {end:.2f} ثانیه — {excerpt}"
+                )
+            lines.append("")
+
+        return "\n".join(lines).rstrip() + "\n"
+
+    @staticmethod
+    def _save_report(
+        content: str,
+        *,
+        filename: str,
+        artifact_store: Any,
+    ) -> tuple[str, str, str]:
+        try:
+            url = str(artifact_store.save(filename, content))
+            file_format = filename.rsplit(".", 1)[-1].lower() if "." in filename else "file"
+            return url, filename, file_format
+        except Exception:
+            return "", filename, "file"
+
+    async def run(self, message: str, params: dict, session: Session) -> AsyncIterator[AgentEvent]:
+        raise RuntimeError("AudioIntelligenceAgent requires Ai_cheshm AgentRuntime context")
+
+
+__all__ = ["AudioIntelligenceAgent"]
