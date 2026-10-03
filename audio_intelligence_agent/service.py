@@ -308,12 +308,12 @@ class AudioIntelligenceService:
         if active_files:
             return self._validate_storage_url(str(active_files[0].get("url") or ""))
 
-        raise ValueError("Please upload an audio file first.")
+        raise ValueError("لطفاً ابتدا یک فایل صوتی را بارگذاری کنید.")
 
     @staticmethod
     def _validate_storage_url(value: str) -> str:
         if not value.startswith("/storage/"):
-            raise ValueError("Audio Intelligence accepts only platform storage URLs.")
+            raise ValueError("این ایجنت فقط فایل‌های بارگذاری‌شده در فضای امن سامانه را می‌پذیرد.")
 
         return value
 
