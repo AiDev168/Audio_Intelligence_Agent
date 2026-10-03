@@ -12,12 +12,11 @@ import asyncio
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
-from typing import Any
-
 from audio_intelligence_agent.service import AudioIntelligenceService
 
 
@@ -56,6 +55,10 @@ class FakeTranscription:
 class FakeTranscriptionOptions:
     model: str | None = None
 
+@dataclass(frozen=True)
+class FakeSummarizationOptions:
+    max_sentences: int | None = None
+
 
 @dataclass(frozen=True)
 class FakeTimelineItem:
@@ -85,6 +88,7 @@ class FakeCore:
     trace: list[str] = field(default_factory=list)
 
     TranscriptionOptions = FakeTranscriptionOptions
+    SummarizationOptions = FakeSummarizationOptions
     MediaTimeline = FakeTimeline
     TimelineItem = FakeTimelineItem
 
