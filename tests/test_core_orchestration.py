@@ -248,3 +248,63 @@ def test_transcription_cache_key_changes_with_provider_or_options():
     )
     assert first != second
     assert first != third
+
+
+def test_ask_downloadable_report_is_human_readable_markdown():
+    from types import SimpleNamespace
+
+    from audio_intelligence_agent.agent import AudioIntelligenceAgent
+
+    result = {
+        "operation": "ask",
+        "asset_id": "asset-1",
+        "media_type": "audio/mpeg",
+        "transcript_text": "[0.00-11.47] متن صوت",
+        "evidence": {
+            "spans": [
+                {
+                    "interval": {"start": 0.0, "end": 11.47},
+                    "excerpt": "متن صوت",
+                }
+            ]
+        },
+        "answer": {
+            "question": "تحلیل کن",
+            "answer": "این یک پاسخ مستند است.",
+            "citations": [
+                {
+                    "interval": {"start": 0.0, "end": 11.47},
+                    "excerpt": "متن صوت",
+                }
+            ],
+        },
+    }
+
+    report = AudioIntelligenceAgent._build_downloadable_report(
+        result,
+        SimpleNamespace(execution_id="exec-1"),
+    )
+
+    assert report["filename"] == "audio_ask_exec-1.md"
+    assert "# گزارش تحلیل صوتی" in report["content"]
+    assert "## پرسش" in report["content"]
+    assert "تحلیل کن" in report["content"]
+    assert "## پاسخ" in report["content"]
+    assert "این یک پاسخ مستند است." in report["content"]
+    assert "## متن پیاده‌سازی‌شده" in report["content"]
+    assert "## شواهد و استنادها" in report["content"]
+    assert ".json" not in report["filename"]
+
+
+def test_non_ask_downloadable_report_keeps_legacy_structured_json():
+    from types import SimpleNamespace
+
+    from audio_intelligence_agent.agent import AudioIntelligenceAgent
+
+    report = AudioIntelligenceAgent._build_downloadable_report(
+        {"operation": "transcribe", "asset_id": "asset-1"},
+        SimpleNamespace(execution_id="exec-2"),
+    )
+
+    assert report["filename"] == "audio_analysis_exec-2.json"
+    assert '"operation": "transcribe"' in report["content"]
