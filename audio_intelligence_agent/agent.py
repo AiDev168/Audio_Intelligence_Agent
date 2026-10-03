@@ -257,6 +257,8 @@ class AudioIntelligenceAgent(BaseAgent):
         }
         if isinstance(answer, dict) and answer.get("answer"):
             done_data["text"] = str(answer["answer"])
+            done_data["question"] = str(answer.get("question") or "")
+            done_data["citations"] = answer.get("citations") or []
         elif result.get("transcript_text"):
             done_data["text"] = "تبدیل گفتار به متن با موفقیت انجام شد."
         elif result.get("summary"):
@@ -281,6 +283,7 @@ class AudioIntelligenceAgent(BaseAgent):
         context: ExecutionContext,
     ) -> dict[str, str] | None:
         operation = result.get("operation")
+
         if operation == "summary":
             summary = result.get("summary")
             text = summary.get("summary") if isinstance(summary, dict) else None
@@ -289,11 +292,75 @@ class AudioIntelligenceAgent(BaseAgent):
                     "content": text.strip() + "\n",
                     "filename": f"audio_summary_{context.execution_id}.txt",
                 }
+
+        if operation in {"ask", "evidence", "analyze"}:
+            return {
+                "content": AudioIntelligenceAgent._build_markdown_report(result),
+                "filename": f"audio_{operation}_{context.execution_id}.md",
+            }
+
+        # Keep structured JSON internally useful for operations that do not
+        # yet have a dedicated human-readable export contract.
         content = json.dumps(result, ensure_ascii=False, indent=2, default=str)
         return {
             "content": content,
             "filename": f"audio_analysis_{context.execution_id}.json",
         }
+
+    @staticmethod
+    def _build_markdown_report(result: dict[str, Any]) -> str:
+        lines = ["# گزارش تحلیل صوتی", ""]
+
+        operation_labels = {
+            "ask": "پرسش و پاسخ مستند",
+            "evidence": "شواهد زمانی",
+            "analyze": "تحلیل کامل صوت",
+        }
+        operation = str(result.get("operation") or "")
+        lines.append(f"**عملیات:** {operation_labels.get(operation, operation)}")
+        lines.append(f"**شناسه فایل:** `{result.get('asset_id', '—')}`")
+        lines.append(f"**نوع رسانه:** `{result.get('media_type', '—')}`")
+        lines.append("")
+
+        answer = result.get("answer")
+        if isinstance(answer, dict):
+            question = str(answer.get("question") or "").strip()
+            answer_text = str(answer.get("answer") or "").strip()
+            if question:
+                lines.extend(["## پرسش", "", question, ""])
+            if answer_text:
+                lines.extend(["## پاسخ", "", answer_text, ""])
+
+        if result.get("transcript_text"):
+            lines.extend(["## متن پیاده‌سازی‌شده", "", str(result["transcript_text"]).strip(), ""])
+
+        evidence = result.get("evidence")
+        if isinstance(evidence, dict):
+            spans = evidence.get("spans") or []
+            if spans:
+                lines.extend(["## شواهد و استنادها", ""])
+                for index, span in enumerate(spans, start=1):
+                    interval = span.get("interval") or {}
+                    start = float(interval.get("start", 0.0) or 0.0)
+                    end = float(interval.get("end", 0.0) or 0.0)
+                    excerpt = str(span.get("excerpt") or "").strip()
+                    lines.append(f"### شواهد {index} — {start:.2f} تا {end:.2f} ثانیه")
+                    lines.append("")
+                    lines.append(f"> {excerpt}")
+                    lines.append("")
+
+        if isinstance(answer, dict) and answer.get("citations"):
+            citation_spans = answer["citations"]
+            lines.extend(["### استنادهای استفاده‌شده", ""])
+            for index, citation in enumerate(citation_spans, start=1):
+                interval = citation.get("interval") or {}
+                start = float(interval.get("start", 0.0) or 0.0)
+                end = float(interval.get("end", 0.0) or 0.0)
+                excerpt = str(citation.get("excerpt") or "").strip()
+                lines.append(f"- **استناد {index}:** {start:.2f} تا {end:.2f} ثانیه — {excerpt}")
+            lines.append("")
+
+        return "\n".join(lines).rstrip() + "\n"
 
     @staticmethod
     def _save_report(
