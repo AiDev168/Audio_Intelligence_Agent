@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import mimetypes
+import os
 from dataclasses import fields
 from typing import Any
 
@@ -103,6 +104,13 @@ class AudioIntelligenceService:
             media_type=self._media_type(resolved_path),
         )
 
+        trace_enabled = os.getenv("AUDIO_INTELLIGENCE_TRACE", "").strip() == "1"
+        if trace_enabled:
+            print(
+                f"[AGENT TRACE] service:operation={operation} asset_id={media.asset_id}",
+                flush=True,
+            )
+
         result: dict[str, Any] = {
             "operation": operation,
             "asset_id": media.asset_id,
@@ -125,8 +133,14 @@ class AudioIntelligenceService:
             "ask",
         }:
             transcription = await self._get_transcription(core, media, prepared, session, context)
+            if trace_enabled:
+                print("[AGENT TRACE] transcription:service_result_received", flush=True)
             result["transcription"] = self._to_public(transcription)
+            if trace_enabled:
+                print("[AGENT TRACE] transcription:public_conversion_done", flush=True)
             result["transcript_text"] = self._transcript_text(transcription)
+            if trace_enabled:
+                print("[AGENT TRACE] transcription:text_conversion_done", flush=True)
 
         if operation in {"language", "analyze"}:
             language = await core.execute(
@@ -295,7 +309,15 @@ class AudioIntelligenceService:
                 diarization,
                 events,
             )
+            if trace_enabled:
+                print(
+                    "[AGENT TRACE] timeline:built "
+                    f"items={result['timeline']['item_count']}",
+                    flush=True,
+                )
 
+        if trace_enabled:
+            print("[AGENT TRACE] service:return", flush=True)
         return result
 
     def _resolve_input_url(self, params: dict[str, Any], session: Any) -> str:
