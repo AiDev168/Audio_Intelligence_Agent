@@ -56,14 +56,29 @@ class CoreCapabilityGateway:
 
     @property
     def core(self):
-        if self._core is None:
+        if self._core is not None:
+            return self._core
+
+        host_core = getattr(self.service, "core", None)
+        if host_core is not None:
             try:
-                import media_intelligence as core
-            except ImportError as exc:
+                self._core = host_core
+                return self._core
+            except Exception as exc:
                 raise CoreCapabilityError(
-                    "Ai_Media_Intelligence_Core is not installed in the Agent runtime."
+                    "Ai_Media_Intelligence_Core could not be resolved by the Host.",
+                    cause=exc,
                 ) from exc
-            self._core = core
+
+        try:
+            import media_intelligence as core
+        except ImportError as exc:
+            raise CoreCapabilityError(
+                "Ai_Media_Intelligence_Core is not available in the Host or Agent runtime.",
+                cause=exc,
+            ) from exc
+
+        self._core = core
         return self._core
 
     async def execute(
