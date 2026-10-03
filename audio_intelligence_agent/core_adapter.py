@@ -59,16 +59,17 @@ class CoreCapabilityGateway:
         if self._core is not None:
             return self._core
 
-        host_core = getattr(self.service, "core", None)
+        try:
+            host_core = getattr(self.service, "core", None)
+        except Exception as exc:
+            raise CoreCapabilityError(
+                "Ai_Media_Intelligence_Core could not be resolved by the Host.",
+                cause=exc,
+            ) from exc
+
         if host_core is not None:
-            try:
-                self._core = host_core
-                return self._core
-            except Exception as exc:
-                raise CoreCapabilityError(
-                    "Ai_Media_Intelligence_Core could not be resolved by the Host.",
-                    cause=exc,
-                ) from exc
+            self._core = host_core
+            return self._core
 
         try:
             import media_intelligence as core
