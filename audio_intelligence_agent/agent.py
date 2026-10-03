@@ -48,7 +48,7 @@ class AudioIntelligenceAgent(BaseAgent):
             yield AgentEvent(
                 type="error",
                 data={
-                    "text": "Please provide an audio request.",
+                    "text": "لطفاً درخواست صوتی خود را وارد کنید.",
                     "execution_id": context.execution_id,
                 },
             )
@@ -70,7 +70,7 @@ class AudioIntelligenceAgent(BaseAgent):
             yield AgentEvent(
                 type="error",
                 data={
-                    "text": "Audio Intelligence is not fully configured on the platform.",
+                    "text": "تحلیلگر هوشمند صوتی در پلتفرم به‌طور کامل تنظیم نشده است.",
                     "execution_id": context.execution_id,
                     "missing_capability_count": len(missing),
                 },
@@ -80,7 +80,7 @@ class AudioIntelligenceAgent(BaseAgent):
         yield AgentEvent(
             type="thinking",
             data={
-                "text": "Preparing the audio analysis...",
+                "text": "در حال آماده‌سازی تحلیل صوتی...",
                 "execution_id": context.execution_id,
             },
         )
@@ -111,7 +111,7 @@ class AudioIntelligenceAgent(BaseAgent):
                 type="error",
                 data={
                     "text": (
-                        "The configured audio analysis service could not complete this operation."
+                        "سرویس تحلیل صوتی تنظیم‌شده نتوانست این عملیات را کامل کند."
                     ),
                     "execution_id": context.execution_id,
                 },
@@ -122,28 +122,34 @@ class AudioIntelligenceAgent(BaseAgent):
             yield AgentEvent(
                 type="cancelled",
                 data={
-                    "text": "Audio analysis was cancelled.",
+                    "text": "تحلیل صوتی متوقف شد.",
                     "execution_id": context.execution_id,
                 },
             )
             return
 
-        report_url = self._save_report(result, artifact_store, context)
-        if report_url:
-            yield AgentEvent(
-                type="artifact",
-                data={
-                    "type": "file",
-                    "title": f"audio_intelligence_{context.execution_id}.json",
-                    "url": report_url,
-                    "agent_id": context.agent_id,
-                    "meta": {
-                        "operation": result.get("operation"),
-                        "asset_id": result.get("asset_id"),
-                        "format": "json",
-                    },
-                },
+        report = self._build_downloadable_report(result, context)
+        if report is not None:
+            report_url, filename, file_format = self._save_report(
+                report["content"],
+                filename=report["filename"],
+                artifact_store=artifact_store,
             )
+            if report_url:
+                yield AgentEvent(
+                    type="artifact",
+                    data={
+                        "type": "file",
+                        "title": filename,
+                        "url": report_url,
+                        "agent_id": context.agent_id,
+                        "meta": {
+                            "operation": result.get("operation"),
+                            "asset_id": result.get("asset_id"),
+                            "format": file_format,
+                        },
+                    },
+                )
 
         answer = result.get("answer")
         if isinstance(answer, dict):
@@ -176,9 +182,9 @@ class AudioIntelligenceAgent(BaseAgent):
         if isinstance(answer, dict) and answer.get("answer"):
             done_data["text"] = str(answer["answer"])
         elif result.get("transcript_text"):
-            done_data["text"] = "Audio transcription completed."
+            done_data["text"] = "تبدیل گفتار به متن با موفقیت انجام شد."
         elif result.get("summary"):
-            done_data["text"] = "Audio analysis completed."
+            done_data["text"] = "تحلیل صوتی با موفقیت انجام شد."
         else:
             done_data["text"] = "Audio analysis completed."
 
@@ -187,24 +193,45 @@ class AudioIntelligenceAgent(BaseAgent):
             data={
                 "stage": "completed",
                 "percent": 100,
-                "text": "Audio analysis completed.",
+                "text": "تحلیل صوتی با موفقیت انجام شد.",
                 "execution_id": context.execution_id,
             },
         )
         yield AgentEvent(type="done", data=done_data)
 
     @staticmethod
-    def _save_report(result: dict[str, Any], artifact_store: Any, context: ExecutionContext) -> str:
+    def _build_downloadable_report(
+        result: dict[str, Any],
+        context: ExecutionContext,
+    ) -> dict[str, str] | None:
+        operation = result.get("operation")
+        if operation == "summary":
+            summary = result.get("summary")
+            text = summary.get("summary") if isinstance(summary, dict) else None
+            if isinstance(text, str) and text.strip():
+                return {
+                    "content": text.strip() + "\n",
+                    "filename": f"audio_summary_{context.execution_id}.txt",
+                }
+        content = json.dumps(result, ensure_ascii=False, indent=2, default=str)
+        return {
+            "content": content,
+            "filename": f"audio_analysis_{context.execution_id}.json",
+        }
+
+    @staticmethod
+    def _save_report(
+        content: str,
+        *,
+        filename: str,
+        artifact_store: Any,
+    ) -> tuple[str, str, str]:
         try:
-            content = json.dumps(result, ensure_ascii=False, indent=2, default=str)
-            return str(
-                artifact_store.save(
-                    f"audio_intelligence_{context.execution_id}.json",
-                    content,
-                )
-            )
+            url = str(artifact_store.save(filename, content))
+            file_format = filename.rsplit(".", 1)[-1].lower() if "." in filename else "file"
+            return url, filename, file_format
         except Exception:
-            return ""
+            return "", filename, "file"
 
     async def run(self, message: str, params: dict, session: Session) -> AsyncIterator[AgentEvent]:
         raise RuntimeError("AudioIntelligenceAgent requires Ai_cheshm AgentRuntime context")
