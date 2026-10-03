@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from types import SimpleNamespace
 
 import pytest
@@ -22,8 +23,7 @@ def test_core_capability_error_keeps_structured_safe_diagnostics() -> None:
     assert "[REDACTED]" in error.detail
 
 
-@pytest.mark.asyncio
-async def test_service_execution_failure_is_wrapped_as_core_capability_error() -> None:
+def test_service_execution_failure_is_wrapped_as_core_capability_error() -> None:
     class FailingService:
         async def execute(self, *args, **kwargs):
             raise RuntimeError("provider unavailable")
@@ -31,12 +31,15 @@ async def test_service_execution_failure_is_wrapped_as_core_capability_error() -
     context = SimpleNamespace(execution_id="exec-1", metadata={}, is_cancelled=lambda: False)
     gateway = CoreCapabilityGateway(FailingService(), context)
 
-    with pytest.raises(CoreCapabilityError) as raised:
-        await gateway.execute("summarization", object())
+    async def run():
+        with pytest.raises(CoreCapabilityError) as raised:
+            await gateway.execute("summarization", object())
 
-    assert raised.value.capability == "summarization"
-    assert raised.value.cause_type == "RuntimeError"
-    assert "provider unavailable" in raised.value.detail
+        assert raised.value.capability == "summarization"
+        assert raised.value.cause_type == "RuntimeError"
+        assert "provider unavailable" in raised.value.detail
+
+    asyncio.run(run())
 
 
 def test_audio_error_hints_cover_user_relevant_capabilities() -> None:
