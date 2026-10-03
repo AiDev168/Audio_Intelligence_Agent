@@ -217,7 +217,7 @@ class AudioIntelligenceService:
             result["entities"] = self._to_public(entities)
 
         events = None
-        if operation in {"audio_events", "evidence", "ask", "analyze"}:
+        if operation in {"audio_events", "analyze"}:
             events = await core.execute(
                 CAPABILITY_NAMES["audio_events"],
                 media,
