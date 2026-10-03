@@ -41,6 +41,10 @@ class FakeTranscription:
 class FakeTranscriptionOptions:
     model: str | None = None
 
+@dataclass(frozen=True)
+class FakeSummarizationOptions:
+    max_sentences: int | None = None
+
 
 @dataclass(frozen=True)
 class FakeTimelineItem:
@@ -67,6 +71,7 @@ class FakeTimeline:
 
 class FakeCore:
     TranscriptionOptions = FakeTranscriptionOptions
+    SummarizationOptions = FakeSummarizationOptions
     MediaTimeline = FakeTimeline
     TimelineItem = FakeTimelineItem
 
