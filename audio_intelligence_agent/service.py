@@ -327,10 +327,43 @@ class AudioIntelligenceService:
                 return self._validate_storage_url(value)
 
         active_files = session.get_active_files() if hasattr(session, "get_active_files") else []
-        if active_files:
-            return self._validate_storage_url(str(active_files[0].get("url") or ""))
+        if not active_files:
+            raise ValueError("لطفاً ابتدا یک فایل صوتی را بارگذاری کنید.")
+
+        selected_ids = {
+            str(item).strip()
+            for item in (params.get("selected_document_ids") or [])
+            if str(item).strip()
+        }
+        if selected_ids:
+            selected_audio = [
+                item
+                for item in active_files
+                if str(item.get("document_id") or "") in selected_ids
+                and self._is_audio_file(item)
+            ]
+            if len(selected_audio) == 1:
+                return self._validate_storage_url(str(selected_audio[0].get("url") or ""))
+            if len(selected_audio) > 1:
+                raise ValueError("لطفاً فقط یک فایل صوتی را برای تحلیل انتخاب کنید.")
+            raise ValueError("فایل انتخاب‌شده برای تحلیل صوتی معتبر نیست؛ یک فایل صوتی انتخاب کنید.")
+
+        audio_files = [item for item in active_files if self._is_audio_file(item)]
+        if audio_files:
+            return self._validate_storage_url(str(audio_files[-1].get("url") or ""))
 
         raise ValueError("لطفاً ابتدا یک فایل صوتی را بارگذاری کنید.")
+
+    @staticmethod
+    def _is_audio_file(item: dict[str, Any]) -> bool:
+        mime = str(item.get("mime") or "").strip().lower()
+        if mime.startswith("audio/"):
+            return True
+        for value in (item.get("name"), item.get("url")):
+            guessed = mimetypes.guess_type(str(value or ""))[0]
+            if guessed and guessed.startswith("audio/"):
+                return True
+        return False
 
     @staticmethod
     def _validate_storage_url(value: str) -> str:
