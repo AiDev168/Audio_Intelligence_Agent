@@ -149,11 +149,23 @@ class AudioIntelligenceAgent(BaseAgent):
                 context=context,
             )
         except (ValueError, FileNotFoundError, PermissionError) as exc:
+            logger.exception(
+                "Audio input/workflow failure: execution_id=%s error_type=%s",
+                context.execution_id,
+                type(exc).__name__,
+            )
             yield AgentEvent(
                 type="error",
                 data={
                     "text": str(exc),
                     "execution_id": context.execution_id,
+                    "error_code": "audio_input_or_workflow_error",
+                    "stage": "input_or_workflow",
+                    "cause_type": type(exc).__name__,
+                    "detail": str(exc)[:1200],
+                    "hint": (
+                        "فایل صوتی، دسترسی آن و operation/پارامترهای درخواست را بررسی کنید."
+                    ),
                 },
             )
             return
