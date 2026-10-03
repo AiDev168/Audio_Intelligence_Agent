@@ -77,15 +77,24 @@ class CoreCapabilityGateway:
 
         service_execute = getattr(self.service, "execute", None)
         if callable(service_execute):
-            result = service_execute(
-                capability,
-                media,
-                options=payload,
-                host_context=self.context,
-            )
-            if hasattr(result, "__await__"):
-                return await result
-            return result
+            try:
+                result = service_execute(
+                    capability,
+                    media,
+                    options=payload,
+                    host_context=self.context,
+                )
+                if hasattr(result, "__await__"):
+                    return await result
+                return result
+            except CoreCapabilityError:
+                raise
+            except Exception as exc:
+                raise CoreCapabilityError(
+                    f"Media Core capability '{capability}' could not be executed.",
+                    capability=capability,
+                    cause=exc,
+                ) from exc
 
         try:
             from media_intelligence import CancellationToken, CapabilityExecutor, ExecutionRequest
