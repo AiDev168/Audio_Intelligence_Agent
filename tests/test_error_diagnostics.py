@@ -44,3 +44,17 @@ def test_audio_error_hints_cover_user_relevant_capabilities() -> None:
     assert "whisperx" in _error_hint("transcription").lower()
     assert "api" in _error_hint("summarization").lower()
     assert "hugging face" in _error_hint("diarization").lower()
+
+
+
+def test_core_gateway_prefers_host_owned_core_instance() -> None:
+    core_marker = object()
+    service = SimpleNamespace(
+        core=core_marker,
+        execute=lambda *args, **kwargs: None,
+    )
+    context = SimpleNamespace(execution_id="exec-host", metadata={})
+
+    gateway = CoreCapabilityGateway(service, context)
+
+    assert gateway.core is core_marker
