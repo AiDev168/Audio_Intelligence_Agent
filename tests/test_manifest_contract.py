@@ -32,3 +32,29 @@ def test_manifest_does_not_expose_provider_specific_capabilities():
     assert "whisperx" not in capabilities
     assert "pyannote" not in capabilities
     assert "ffmpeg" not in capabilities
+
+
+def test_manifest_is_persian_first_and_declares_provider_configuration():
+    assert AGENT_MANIFEST["name"] == "تحلیلگر هوشمند صوتی"
+    operation = AGENT_MANIFEST["params"]["properties"]["operation"]
+    assert operation["enumLabels"]["summary"] == "خلاصه‌سازی"
+    settings = AGENT_MANIFEST["settings"]["properties"]
+    required = {
+        "whisper_model_path",
+        "remote_transcription_base_url",
+        "remote_transcription_api_key",
+        "remote_transcription_model",
+        "remote_semantic_base_url",
+        "remote_semantic_api_key",
+        "remote_semantic_model",
+        "diarization_hf_token",
+    }
+    assert required <= set(settings)
+    assert settings["remote_transcription_api_key"]["format"] == "password"
+    assert settings["remote_semantic_api_key"]["format"] == "password"
+    assert settings["diarization_hf_token"]["format"] == "password"
+    assert settings["remote_transcription_base_url"]["showWhen"]["values"] == [
+        "remote",
+        "local-first",
+        "remote-first",
+    ]
