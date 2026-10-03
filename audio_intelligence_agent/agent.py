@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from collections.abc import AsyncIterator
 from typing import Any
 
@@ -21,6 +22,56 @@ except ImportError:
     AgentEvent = Any  # type: ignore[assignment,misc]
     ExecutionContext = Any  # type: ignore[assignment,misc]
     Session = Any  # type: ignore[assignment,misc]
+
+
+logger = logging.getLogger("audio_intelligence_agent")
+
+
+_CAPABILITY_LABELS = {
+    "transcription": "تبدیل گفتار به متن",
+    "language-identification": "تشخیص زبان",
+    "diarization": "تفکیک گویندگان",
+    "speaker-turn-analysis": "تحلیل گویندگان",
+    "temporal-transcript-search": "جست‌وجو در متن صوت",
+    "topic-chapter": "موضوعات و فصل‌ها",
+    "summarization": "خلاصه‌سازی",
+    "entity-extraction": "استخراج موجودیت‌ها",
+    "audio-event": "تشخیص رویدادهای صوتی",
+    "audio-evidence": "استخراج شواهد زمانی",
+    "grounded-qa": "پرسش و پاسخ مستند",
+}
+
+
+def _error_hint(capability: str | None) -> str:
+    hints = {
+        "transcription": (
+            "مسیر مدل WhisperX، وجود whisperx در همان Python، "
+            "device/compute type و دسترسی فایل صوتی را بررسی کنید."
+        ),
+        "summarization": (
+            "Base URL، API Key و نام مدل زبانی را بررسی کنید و مطمئن شوید "
+            "سرویس ریموت endpoint سازگار با /chat/completions دارد."
+        ),
+        "topic-chapter": (
+            "تنظیمات مدل زبانی و دسترسی سرویس به /chat/completions را بررسی کنید."
+        ),
+        "entity-extraction": (
+            "تنظیمات مدل زبانی و پاسخ JSON سرویس را بررسی کنید."
+        ),
+        "grounded-qa": (
+            "تنظیمات مدل زبانی را بررسی کنید؛ Provider باید پاسخ JSON شامل answer و citations برگرداند."
+        ),
+        "diarization": (
+            "توکن Hugging Face، دسترسی مدل pyannote و سازگاری device را بررسی کنید."
+        ),
+        "audio-event": (
+            "Provider تولیدی تشخیص رویدادهای صوتی هنوز در Host assembly فعال نشده است."
+        ),
+    }
+    return hints.get(
+        str(capability or ""),
+        "جزئیات فنی و تنظیمات Provider این قابلیت را بررسی کنید.",
+    )
 
 
 class AudioIntelligenceAgent(BaseAgent):
@@ -106,12 +157,26 @@ class AudioIntelligenceAgent(BaseAgent):
                 },
             )
             return
-        except CoreCapabilityError:
+        except CoreCapabilityError as exc:
+            logger.exception(
+                "Audio execution failed: execution_id=%s capability=%s error_type=%s",
+                context.execution_id,
+                exc.capability or "unknown",
+                exc.cause_type or type(exc).__name__,
+            )
+            capability = exc.capability
+            label = _CAPABILITY_LABELS.get(capability or "", "تحلیل صوتی")
             yield AgentEvent(
                 type="error",
                 data={
-                    "text": "سرویس تحلیل صوتی تنظیم‌شده نتوانست این عملیات را کامل کند.",
+                    "text": f"مرحله «{label}» نتوانست عملیات را کامل کند.",
                     "execution_id": context.execution_id,
+                    "error_code": "audio_core_capability_failed",
+                    "stage": label,
+                    "capability": capability or "",
+                    "cause_type": exc.cause_type or type(exc).__name__,
+                    "detail": exc.detail,
+                    "hint": _error_hint(capability),
                 },
             )
             return
