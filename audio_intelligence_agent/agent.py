@@ -45,7 +45,7 @@ _CAPABILITY_LABELS = {
 def _error_hint(capability: str | None) -> str:
     hints = {
         "transcription": (
-            "مسیر مدل WhisperX، وجود whisperx در همان Python، "
+            "مسیر مدل faster-whisper، وجود faster-whisper در همان Python، "
             "device/compute type و دسترسی فایل صوتی را بررسی کنید."
         ),
         "summarization": (
