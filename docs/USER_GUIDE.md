@@ -1,46 +1,96 @@
-# Audio Intelligence Agent — User Guide
+# راهنمای کاربر — تحلیلگر هوشمند صوتی
 
-## What it does
+## این ایجنت چه کاری انجام می‌دهد؟
 
-Audio Intelligence understands spoken and non-spoken audio and can produce transcripts, identify languages and speakers, organize topics, summarize content and answer timestamp-grounded questions.
+«تحلیلگر هوشمند صوتی» برای کاربران فارسی‌زبان طراحی شده است تا یک فایل صوتی را به متن تبدیل کند، آن را خلاصه کند و درباره محتوای آن سؤال پاسخ دهد.
 
-## Supported profiles
+قابلیت‌های اصلی:
 
-- Podcast
-- Meeting
-- Lecture
-- Interview
-- Call / voice recording
-- General audio
+- تبدیل گفتار به متن
+- تشخیص زبان
+- تفکیک و تحلیل گویندگان
+- جست‌وجو در متن صوت
+- استخراج موضوعات و فصل‌ها
+- خلاصه‌سازی
+- استخراج افراد، مکان‌ها و موجودیت‌ها
+- تحلیل رویدادهای صوتی
+- یافتن شواهد زمانی
+- پرسش‌وپاسخ مستند
 
-## Typical workflow
+## ساده‌ترین تست واقعی
 
-1. Upload/select an audio file in Ai_cheshm.
-2. Select Audio Intelligence.
-3. Choose a profile.
-4. Ask for transcription, summary, speakers, topics or a specific question.
-5. The Agent reuses compatible analysis when possible.
-6. Results can include timestamps and protected downloadable artifacts.
+برای آزمایش «خلاصه‌سازی فایل صوتی» فقط دو Provider لازم است:
 
-## Grounded questions
+| بخش | Provider لازم | تنظیمات |
+|---|---|---|
+| تبدیل صوت به متن | WhisperX محلی | مسیر مدل WhisperX |
+| خلاصه‌سازی | مدل زبانی محلی یا ریموت | Base URL + API Key + Model |
 
-Examples:
-- What were the main topics?
-- When was the budget discussed?
-- What did Speaker 2 say about the deadline?
-- Give me the evidence for this answer.
-- Create chapters for this recording.
+Whisper فقط گفتار را به متن تبدیل می‌کند؛ خودش خلاصه‌ساز نیست.
 
-Exact model/provider controls will be exposed only when useful to the selected workflow.
+## تنظیم WhisperX محلی
 
-## Outputs
+در تنظیمات ایجنت:
 
-Depending on the request:
-- transcript
-- speaker-aware transcript
-- chapters
-- summary
-- entity/keyword report
-- audio-event report
-- timestamped evidence
-- grounded answer
+1. «روش تبدیل گفتار به متن» را روی «WhisperX محلی» بگذارید.
+2. «مسیر مدل WhisperX» را به پوشه/مدل موجود روی همان سیستم بدهید.
+3. دستگاه را `cuda` انتخاب کنید تا از کارت گرافیک استفاده شود.
+4. نوع محاسبه را معمولاً `float16` قرار دهید.
+5. اندازه دسته را بر اساس حافظه GPU انتخاب کنید.
+
+## تنظیم مدل زبانی ریموت
+
+برای خلاصه‌سازی و قابلیت‌های متنی:
+
+- «روش مدل زبانی» → «مدل زبانی ریموت»
+- `Base URL`
+- `API Key`
+- `Model`
+
+هر سه مقدار در تنظیمات جداگانه و فارسی نمایش داده می‌شوند. API Key در Cheshm به‌صورت رمزنگاری‌شده ذخیره می‌شود.
+
+برای سرویس‌های OpenAI-compatible معمولاً Base URL به شکل `https://provider.example/v1` است.
+
+## تفکیک گویندگان
+
+برای تفکیک گویندگان، Whisper به‌تنهایی کافی نیست. این قابلیت به یک Provider تفکیک گوینده، مانند WhisperX + pyannote، و در حالت‌های رایج به دسترسی Hugging Face به مدل‌های gated نیاز دارد.
+
+تنظیمات این بخش:
+
+- روش تفکیک گویندگان
+- کلید Hugging Face
+- مدل تفکیک گویندگان
+
+## سایر قابلیت‌ها و Provider مورد نیاز
+
+| قابلیت | نیاز خارجی |
+|---|---|
+| تبدیل گفتار به متن | WhisperX یا سرویس ASR ریموت |
+| تشخیص زبان | از Provider گفتار به متن قابل استخراج است |
+| تفکیک گویندگان | WhisperX + pyannote یا Provider تخصصی دیاریزیشن |
+| تحلیل گویندگان | خود Core؛ بعد از داشتن transcription + diarization |
+| جست‌وجوی متن | خود Core؛ بدون مدل خارجی |
+| موضوعات/فصل‌ها | مدل زبانی |
+| خلاصه‌سازی | مدل زبانی |
+| موجودیت‌ها/کلیدواژه‌ها | مدل زبانی |
+| رویدادهای صوتی | مدل تخصصی تشخیص رویداد صوتی |
+| شواهد زمانی | خود Core؛ از transcript/events استفاده می‌کند |
+| پرسش‌وپاسخ مستند | مدل زبانی + شواهد Core |
+
+## خروجی قابل دانلود
+
+هنگام انتخاب «خلاصه‌سازی»، علاوه بر نمایش نتیجه در پنل، یک فایل متنی با پسوند `.txt` ساخته می‌شود و از بخش «خروجی‌های قابل دانلود» قابل دریافت است.
+
+## پروفایل‌های آماده
+
+- عمومی
+- پادکست
+- جلسه
+- سخنرانی / کلاس
+- مصاحبه
+- تماس / مکالمه
+
+## نکته مهم
+
+کاربر عادی نباید نیاز داشته باشد Providerهای پیچیده را بشناسد. برای تست اولیه فقط مسیر WhisperX و مشخصات مدل زبانی لازم است. تنظیم Providerهای پیشرفته باید توسط مدیر یا توسعه‌دهنده انجام شود.
+
