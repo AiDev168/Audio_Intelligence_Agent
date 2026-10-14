@@ -463,7 +463,8 @@ class AudioIntelligenceService:
             missing = [item for item in selected_ids if item not in by_id]
             if missing:
                 raise ValueError(
-                    "یک یا چند فایل انتخاب‌شده دیگر در نشست فعال نیستند؛ فهرست «اسناد من» را تازه کنید."
+                    "یک یا چند فایل انتخاب‌شده دیگر در نشست فعال نیستند؛ "
+                    "فهرست «اسناد من» را تازه کنید."
                 )
             selected_audio = [by_id[item] for item in selected_ids]
             not_audio = [

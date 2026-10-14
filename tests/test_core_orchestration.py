@@ -447,3 +447,74 @@ def test_natural_phrase_analyze_resolves_to_full_analysis():
     assert service._resolve_operation("این فایل را تحلیل کن", {}) == "analyze"
     assert service._resolve_operation("تحلیل کامل انجام بده", {}) == "analyze"
     assert service._resolve_operation("این صوت درباره چه چیزی است؟", {}) == "ask"
+
+
+
+def test_execute_aggregates_multiple_audio_files_in_selected_order():
+    service = AudioIntelligenceService(
+        core_service=object(),
+        file_access=FakeFileAccess(),
+        settings={},
+    )
+    processed = []
+
+    async def fake_execute_single(*, message, params, session, context):
+        url = params["audio_file"]
+        processed.append(url)
+        return {
+            "asset_id": f"asset-{len(processed)}",
+            "operation": "summary",
+            "summary": {"summary": f"summary for {url}"},
+        }
+
+    service._execute_single = fake_execute_single
+
+    class Session:
+        state = {}
+
+        def get_active_files(self):
+            return [
+                {
+                    "document_id": "audio-first",
+                    "url": "/storage/first.wav",
+                    "name": "first.wav",
+                    "mime": "audio/wav",
+                    "active": True,
+                    "legacy": False,
+                },
+                {
+                    "document_id": "audio-second",
+                    "url": "/storage/second.wav",
+                    "name": "second.wav",
+                    "mime": "audio/wav",
+                    "active": True,
+                    "legacy": False,
+                },
+            ]
+
+    result = asyncio.run(
+        service.execute(
+            message="خلاصه کن",
+            params={"selected_document_ids": ["audio-second", "audio-first"]},
+            session=Session(),
+            context=FakeContext(),
+        )
+    )
+
+    assert result["operation"] == "summary"
+    assert result["asset_count"] == 2
+    assert result["source_filenames"] == ["second.wav", "first.wav"]
+    assert processed == ["/storage/second.wav", "/storage/first.wav"]
+    assert [
+        item["result"]["summary"]["summary"] for item in result["batch_results"]
+    ] == [
+        "summary for /storage/second.wav",
+        "summary for /storage/first.wav",
+    ]
+
+
+def test_manifest_does_not_offer_audio_events_without_a_provider():
+    from audio_intelligence_agent.manifest import AGENT_MANIFEST
+
+    operation = AGENT_MANIFEST["params"]["properties"]["operation"]
+    assert "audio_events" not in operation["enum"]
