@@ -131,3 +131,8 @@ The Agent emits the final grounded answer through the standard `done` event. The
 ## Multi-file input, stale-result avoidance, and cache identity
 
 The service resolves explicit form URLs first, then selected session document IDs. If selection is absent and several audio files exist, it fails with a Persian prompt rather than selecting the last active audio. Multiple files are analyzed sequentially with independent per-file Core calls and an aggregate Markdown report. The transcription cache schema is versioned and the key includes SHA-256 of file content in addition to asset ID, provider policy, and transcription options. A malformed cache item is removed by its cache key, not by asset ID.
+
+
+## Capability availability and partial full-analysis reports
+
+The Core declares an audio-event capability, but the current Host assembly has no production audio-event provider. It is not advertised as an executable operation in the user-facing manifest. During a full analysis, diarization, speaker-turn attribution, and audio-event detection are treated as optional stages: provider/model failures are captured as status+safe diagnostic fields so transcription, language identification, topics, summary and entity extraction can continue when their required providers work. Direct requests to a capability that has no provider still fail explicitly.

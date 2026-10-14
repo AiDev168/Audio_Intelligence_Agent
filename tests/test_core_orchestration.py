@@ -408,3 +408,29 @@ def test_transcription_cache_key_includes_file_content_digest():
         gateway, media, {"audio_content_sha256": "content-b"}, context
     )
     assert first != second
+
+
+
+def test_markdown_report_discloses_unavailable_optional_capabilities():
+    from types import SimpleNamespace
+
+    from audio_intelligence_agent.agent import AudioIntelligenceAgent
+
+    report = AudioIntelligenceAgent._build_downloadable_report(
+        {
+            "operation": "analyze",
+            "asset_id": "asset-1",
+            "media_type": "audio/wav",
+            "transcript_text": "سلام",
+            "diarization_status": "unavailable",
+            "diarization_diagnostic": "No local diarization model configured",
+            "audio_events_status": "unavailable",
+            "audio_events_diagnostic": "No provider configured",
+        },
+        SimpleNamespace(execution_id="exec-status"),
+    )
+
+    assert "وضعیت قابلیت‌های تکمیلی" in report["content"]
+    assert "تفکیک گویندگان" in report["content"]
+    assert "در دسترس نیست" in report["content"]
+    assert "تشخیص رویدادهای صوتی" in report["content"]

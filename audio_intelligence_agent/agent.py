@@ -394,6 +394,16 @@ class AudioIntelligenceAgent(BaseAgent):
             transcript = str(single.get("transcript_text") or "").strip()
             if transcript:
                 lines.extend(["### متن پیاده‌سازی‌شده", "", transcript, ""])
+            for status_key, label, detail_key in (
+                ("diarization_status", "تفکیک گویندگان", "diarization_diagnostic"),
+                ("speaker_analysis_status", "تحلیل گویندگان", "speaker_analysis_diagnostic"),
+                ("audio_events_status", "تشخیص رویدادهای صوتی", "audio_events_diagnostic"),
+            ):
+                if status_key in single:
+                    status_value = str(single.get(status_key))
+                    lines.extend([f"### وضعیت {label}", "", status_value, ""])
+                    if single.get(detail_key):
+                        lines.extend([str(single[detail_key])[:500], ""])
             evidence = single.get("evidence")
             if isinstance(evidence, dict) and evidence.get("spans"):
                 lines.extend(["### شواهد زمانی", ""])
@@ -449,6 +459,29 @@ class AudioIntelligenceAgent(BaseAgent):
                     "",
                 ]
             )
+
+        optional_stages = (
+            ("diarization_status", "تفکیک گویندگان", "diarization_diagnostic"),
+            ("speaker_analysis_status", "تحلیل گویندگان", "speaker_analysis_diagnostic"),
+            ("audio_events_status", "تشخیص رویدادهای صوتی", "audio_events_diagnostic"),
+        )
+        visible_stages = [
+            (label, result[status_key], result.get(detail_key))
+            for status_key, label, detail_key in optional_stages
+            if status_key in result
+        ]
+        if visible_stages:
+            lines.extend(["## وضعیت قابلیت‌های تکمیلی", ""])
+            status_labels = {
+                "ok": "موفق",
+                "unavailable": "در دسترس نیست",
+                "skipped_diarization_unavailable": "رد شد؛ تفکیک گویندگان در دسترس نبود",
+            }
+            for label, status, diagnostic in visible_stages:
+                lines.append(f"- **{label}:** {status_labels.get(status, status)}")
+                if diagnostic:
+                    lines.append(f"  - جزئیات: {str(diagnostic)[:500]}")
+            lines.append("")
 
         evidence = result.get("evidence")
         if isinstance(evidence, dict):

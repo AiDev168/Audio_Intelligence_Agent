@@ -9,7 +9,7 @@ import os
 from dataclasses import fields
 from typing import Any
 
-from audio_intelligence_agent.core_adapter import CoreCapabilityGateway
+from audio_intelligence_agent.core_adapter import CoreCapabilityError, CoreCapabilityGateway
 
 TRANSCRIPTION_CACHE_SCHEMA_VERSION = "3"
 
@@ -214,23 +214,40 @@ class AudioIntelligenceService:
 
         diarization = None
         if operation in {"diarize", "speaker_analysis", "analyze"}:
-            diarization = await self._get_diarization(core, media, prepared)
-            result["diarization"] = self._to_public(diarization)
+            try:
+                diarization = await self._get_diarization(core, media, prepared)
+                result["diarization_status"] = "ok"
+                result["diarization"] = self._to_public(diarization)
+            except CoreCapabilityError as exc:
+                if operation != "analyze":
+                    raise
+                result["diarization_status"] = "unavailable"
+                result["diarization_diagnostic"] = exc.detail
 
             if operation in {"speaker_analysis", "analyze"}:
-                speaker_result = await core.execute(
-                    CAPABILITY_NAMES["speaker_analysis"],
-                    media,
-                    options={
-                        "transcription": transcription,
-                        "diarization": diarization,
-                        "speaker_options": _construct_option(
-                            core.core.SpeakerAttributionOptions,
-                            prepared.get("speaker_options"),
-                        ),
-                    },
-                )
-                result["speaker_analysis"] = self._to_public(speaker_result)
+                if diarization is None:
+                    result["speaker_analysis_status"] = "skipped_diarization_unavailable"
+                else:
+                    try:
+                        speaker_result = await core.execute(
+                            CAPABILITY_NAMES["speaker_analysis"],
+                            media,
+                            options={
+                                "transcription": transcription,
+                                "diarization": diarization,
+                                "speaker_options": _construct_option(
+                                    core.core.SpeakerAttributionOptions,
+                                    prepared.get("speaker_options"),
+                                ),
+                            },
+                        )
+                        result["speaker_analysis_status"] = "ok"
+                        result["speaker_analysis"] = self._to_public(speaker_result)
+                    except CoreCapabilityError as exc:
+                        if operation != "analyze":
+                            raise
+                        result["speaker_analysis_status"] = "unavailable"
+                        result["speaker_analysis_diagnostic"] = exc.detail
 
         if operation == "search":
             query_text = str(prepared.get("query") or message).strip()
@@ -289,17 +306,24 @@ class AudioIntelligenceService:
 
         events = None
         if operation in {"audio_events", "analyze"}:
-            events = await core.execute(
-                CAPABILITY_NAMES["audio_events"],
-                media,
-                options={
-                    "event_options": _construct_option(
-                        core.core.AudioEventOptions,
-                        prepared.get("audio_event_options"),
-                    )
-                },
-            )
-            result["audio_events"] = self._to_public(events)
+            try:
+                events = await core.execute(
+                    CAPABILITY_NAMES["audio_events"],
+                    media,
+                    options={
+                        "event_options": _construct_option(
+                            core.core.AudioEventOptions,
+                            prepared.get("audio_event_options"),
+                        )
+                    },
+                )
+                result["audio_events_status"] = "ok"
+                result["audio_events"] = self._to_public(events)
+            except CoreCapabilityError as exc:
+                if operation != "analyze":
+                    raise
+                result["audio_events_status"] = "unavailable"
+                result["audio_events_diagnostic"] = exc.detail
 
         if operation == "evidence":
             evidence_query = self._make_evidence_query(
