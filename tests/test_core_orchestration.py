@@ -434,3 +434,16 @@ def test_markdown_report_discloses_unavailable_optional_capabilities():
     assert "تفکیک گویندگان" in report["content"]
     assert "در دسترس نیست" in report["content"]
     assert "تشخیص رویدادهای صوتی" in report["content"]
+
+
+
+def test_natural_phrase_analyze_resolves_to_full_analysis():
+    service = AudioIntelligenceService(
+        core_service=object(),
+        file_access=FakeFileAccess(),
+        settings={},
+    )
+
+    assert service._resolve_operation("این فایل را تحلیل کن", {}) == "analyze"
+    assert service._resolve_operation("تحلیل کامل انجام بده", {}) == "analyze"
+    assert service._resolve_operation("این صوت درباره چه چیزی است؟", {}) == "ask"

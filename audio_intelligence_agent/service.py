@@ -574,6 +574,19 @@ class AudioIntelligenceService:
             return "language"
         if any(token in text for token in ("chapter", "topic", "فصل", "موضوع")):
             return "topics"
+        if any(
+            token in text
+            for token in (
+                "analyze",
+                "analysis",
+                "تحلیل کن",
+                "تحلیل کامل",
+                "آنالیز",
+                "بررسی کامل",
+                "کل فایل را تحلیل",
+            )
+        ):
+            return "analyze"
         return "ask"
 
     async def _get_transcription(self, core, media, prepared, session, context):

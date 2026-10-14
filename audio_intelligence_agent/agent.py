@@ -275,12 +275,20 @@ class AudioIntelligenceAgent(BaseAgent):
             "operation": result.get("operation"),
             "asset_id": result.get("asset_id"),
         }
+        if result.get("source_filename"):
+            done_data["source_filename"] = str(result["source_filename"])
         if isinstance(batch_results, list):
             done_data["asset_ids"] = result.get("asset_ids") or []
             done_data["file_count"] = len(batch_results)
             done_data["text"] = self._batch_completion_text(result)
         elif isinstance(answer, dict) and answer.get("answer"):
-            done_data["text"] = str(answer["answer"])
+            answer_text = str(answer["answer"])
+            source_filename = str(result.get("source_filename") or "").strip()
+            done_data["text"] = (
+                f"فایل تحلیل‌شده: {source_filename}\n\n{answer_text}"
+                if source_filename
+                else answer_text
+            )
             done_data["question"] = str(answer.get("question") or "")
             done_data["citations"] = answer.get("citations") or []
         elif result.get("transcript_text"):
@@ -317,8 +325,10 @@ class AudioIntelligenceAgent(BaseAgent):
             summary = result.get("summary")
             text = summary.get("summary") if isinstance(summary, dict) else None
             if isinstance(text, str) and text.strip():
+                source_filename = str(result.get("source_filename") or "").strip()
+                prefix = f"فایل صوتی: {source_filename}\n\n" if source_filename else ""
                 return {
-                    "content": text.strip() + "\n",
+                    "content": prefix + text.strip() + "\n",
                     "filename": f"audio_summary_{context.execution_id}.txt",
                 }
 
@@ -437,6 +447,8 @@ class AudioIntelligenceAgent(BaseAgent):
         }
         operation = str(result.get("operation") or "")
         lines.append(f"**عملیات:** {operation_labels.get(operation, operation)}")
+        if result.get("source_filename"):
+            lines.append(f"**نام فایل:** {result['source_filename']}")
         lines.append(f"**شناسه فایل:** `{result.get('asset_id', '—')}`")
         lines.append(f"**نوع رسانه:** `{result.get('media_type', '—')}`")
         lines.append("")
