@@ -308,3 +308,103 @@ def test_non_ask_downloadable_report_keeps_legacy_structured_json():
 
     assert report["filename"] == "audio_analysis_exec-2.json"
     assert '"operation": "transcribe"' in report["content"]
+
+
+
+def test_multiple_selected_audio_documents_are_resolved_in_requested_order():
+    service = AudioIntelligenceService(
+        core_service=object(),
+        file_access=FakeFileAccess(),
+        settings={},
+    )
+
+    class Session:
+        state = {}
+
+        def get_active_files(self):
+            return [
+                {
+                    "document_id": "first",
+                    "url": "/storage/first.wav",
+                    "name": "first.wav",
+                    "mime": "audio/wav",
+                    "active": True,
+                    "legacy": False,
+                },
+                {
+                    "document_id": "second",
+                    "url": "/storage/second.mp3",
+                    "name": "second.mp3",
+                    "mime": "audio/mpeg",
+                    "active": True,
+                    "legacy": False,
+                },
+            ]
+
+    files = service._resolve_input_files(
+        {"selected_document_ids": ["second", "first"]},
+        Session(),
+    )
+    assert [item["document_id"] for item in files] == ["second", "first"]
+    assert [item["url"] for item in files] == [
+        "/storage/second.mp3",
+        "/storage/first.wav",
+    ]
+
+
+def test_multiple_active_audio_files_are_never_silently_resolved_to_the_last_one():
+    service = AudioIntelligenceService(
+        core_service=object(),
+        file_access=FakeFileAccess(),
+        settings={},
+    )
+
+    class Session:
+        state = {}
+
+        def get_active_files(self):
+            return [
+                {
+                    "document_id": "old",
+                    "url": "/storage/old.wav",
+                    "name": "old.wav",
+                    "mime": "audio/wav",
+                    "active": True,
+                    "legacy": False,
+                },
+                {
+                    "document_id": "new",
+                    "url": "/storage/new.wav",
+                    "name": "new.wav",
+                    "mime": "audio/wav",
+                    "active": True,
+                    "legacy": False,
+                },
+            ]
+
+    with pytest.raises(ValueError, match="جلوگیری از تحلیل فایل اشتباه"):
+        service._resolve_input_files({}, Session())
+
+
+def test_transcription_cache_key_includes_file_content_digest():
+    service = AudioIntelligenceService(
+        core_service=object(),
+        file_access=FakeFileAccess(),
+        settings={},
+    )
+
+    class Core:
+        pass
+
+    gateway = type("Gateway", (), {"core": Core})()
+    media = type("Media", (), {"asset_id": "same-asset-id"})()
+    context = FakeContext(
+        metadata={"media_intelligence_provider_policy": {"transcription": "asr-a"}}
+    )
+    first = service._transcription_cache_key(
+        gateway, media, {"audio_content_sha256": "content-a"}, context
+    )
+    second = service._transcription_cache_key(
+        gateway, media, {"audio_content_sha256": "content-b"}, context
+    )
+    assert first != second

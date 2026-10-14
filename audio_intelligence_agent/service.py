@@ -11,7 +11,7 @@ from typing import Any
 
 from audio_intelligence_agent.core_adapter import CoreCapabilityGateway
 
-TRANSCRIPTION_CACHE_SCHEMA_VERSION = "2"
+TRANSCRIPTION_CACHE_SCHEMA_VERSION = "3"
 
 
 CAPABILITY_NAMES = {
@@ -93,10 +93,67 @@ class AudioIntelligenceService:
     ) -> dict[str, Any]:
         prepared = dict(self.settings)
         prepared.update(params or {})
+        audio_files = self._resolve_input_files(prepared, session)
+        operation = self._resolve_operation(message, prepared)
+
+        if len(audio_files) == 1:
+            single_params = dict(params or {})
+            single_params["audio_file"] = audio_files[0]["url"]
+            result = await self._execute_single(
+                message=message,
+                params=single_params,
+                session=session,
+                context=context,
+            )
+            result.setdefault("source_filename", audio_files[0]["name"])
+            return result
+
+        batch_results: list[dict[str, Any]] = []
+        for audio_file in audio_files:
+            if hasattr(context, "is_cancelled") and context.is_cancelled():
+                break
+            single_params = dict(params or {})
+            single_params["audio_file"] = audio_file["url"]
+            single_result = await self._execute_single(
+                message=message,
+                params=single_params,
+                session=session,
+                context=context,
+            )
+            batch_results.append(
+                {
+                    "filename": audio_file["name"],
+                    "document_id": audio_file["document_id"],
+                    "asset_id": single_result.get("asset_id"),
+                    "result": single_result,
+                }
+            )
+
+        return {
+            "operation": operation,
+            "batch_results": batch_results,
+            "asset_count": len(batch_results),
+            "asset_ids": [
+                item["asset_id"] for item in batch_results if item.get("asset_id")
+            ],
+            "source_filenames": [item["filename"] for item in batch_results],
+        }
+
+    async def _execute_single(
+        self,
+        *,
+        message: str,
+        params: dict[str, Any],
+        session: Any,
+        context: Any,
+    ) -> dict[str, Any]:
+        prepared = dict(self.settings)
+        prepared.update(params or {})
 
         operation = self._resolve_operation(message, prepared)
         input_url = self._resolve_input_url(prepared, session)
         resolved_path = self.file_access.resolve(input_url)
+        prepared["audio_content_sha256"] = self._sha256_file(resolved_path)
 
         core = CoreCapabilityGateway(self.core_service, context)
         media = core.core.media_asset_from_path(
@@ -320,39 +377,128 @@ class AudioIntelligenceService:
             print("[AGENT TRACE] service:return", flush=True)
         return result
 
-    def _resolve_input_url(self, params: dict[str, Any], session: Any) -> str:
-        for key in ("audio_file", "input_file", "file"):
-            value = str(params.get(key) or "").strip()
-            if value:
-                return self._validate_storage_url(value)
-
-        active_files = session.get_active_files() if hasattr(session, "get_active_files") else []
-        if not active_files:
-            raise ValueError("لطفاً ابتدا یک فایل صوتی را بارگذاری کنید.")
-
-        selected_ids = {
-            str(item).strip()
-            for item in (params.get("selected_document_ids") or [])
-            if str(item).strip()
+    def _resolve_input_files(
+        self,
+        params: dict[str, Any],
+        session: Any,
+    ) -> list[dict[str, str]]:
+        active_files = (
+            session.get_active_files() if hasattr(session, "get_active_files") else []
+        )
+        by_url = {
+            str(item.get("url") or ""): item
+            for item in active_files
+            if str(item.get("url") or "")
         }
+
+        for key in ("audio_files", "audio_file", "input_file", "file"):
+            raw_value = params.get(key)
+            if raw_value is None or raw_value == "":
+                continue
+            values = raw_value if isinstance(raw_value, (list, tuple)) else [raw_value]
+            resolved = []
+            for value in values:
+                if isinstance(value, dict):
+                    url = str(value.get("url") or value.get("value") or "").strip()
+                    supplied_name = str(value.get("name") or "").strip()
+                else:
+                    url = str(value or "").strip()
+                    supplied_name = ""
+                if not url:
+                    continue
+                url = self._validate_storage_url(url)
+                item = by_url.get(url, {})
+                if item and not self._is_audio_file(item):
+                    raise ValueError(
+                        f"فایل «{item.get('name') or url}» فایل صوتی شناخته‌شده‌ای نیست."
+                    )
+                name = supplied_name or str(item.get("name") or url.rsplit("/", 1)[-1])
+                resolved.append(
+                    {
+                        "url": url,
+                        "name": name,
+                        "document_id": str(item.get("document_id") or ""),
+                    }
+                )
+            if resolved:
+                return self._deduplicate_input_files(resolved)
+
+        raw_selected = params.get("selected_document_ids") or []
+        if isinstance(raw_selected, str):
+            selected_ids = [raw_selected.strip()] if raw_selected.strip() else []
+        else:
+            selected_ids = list(dict.fromkeys(
+                str(item).strip() for item in raw_selected if str(item).strip()
+            ))
         if selected_ids:
-            selected_audio = [
-                item
+            by_id = {
+                str(item.get("document_id") or ""): item
                 for item in active_files
-                if str(item.get("document_id") or "") in selected_ids
-                and self._is_audio_file(item)
+                if str(item.get("document_id") or "")
+            }
+            missing = [item for item in selected_ids if item not in by_id]
+            if missing:
+                raise ValueError(
+                    "یک یا چند فایل انتخاب‌شده دیگر در نشست فعال نیستند؛ فهرست «اسناد من» را تازه کنید."
+                )
+            selected_audio = [by_id[item] for item in selected_ids]
+            not_audio = [
+                str(item.get("name") or "فایل")
+                for item in selected_audio
+                if not self._is_audio_file(item)
             ]
-            if len(selected_audio) == 1:
-                return self._validate_storage_url(str(selected_audio[0].get("url") or ""))
-            if len(selected_audio) > 1:
-                raise ValueError("لطفاً فقط یک فایل صوتی را برای تحلیل انتخاب کنید.")
-            raise ValueError("فایل انتخاب‌شده برای تحلیل صوتی معتبر نیست؛ یک فایل صوتی انتخاب کنید.")
+            if not_audio:
+                raise ValueError(
+                    "برای تحلیل صوتی فقط فایل صوتی انتخاب کنید: " + "، ".join(not_audio[:5])
+                )
+            return self._deduplicate_input_files(
+                [
+                    {
+                        "url": self._validate_storage_url(str(item.get("url") or "")),
+                        "name": str(item.get("name") or "فایل صوتی"),
+                        "document_id": str(item.get("document_id") or ""),
+                    }
+                    for item in selected_audio
+                ]
+            )
 
         audio_files = [item for item in active_files if self._is_audio_file(item)]
-        if audio_files:
-            return self._validate_storage_url(str(audio_files[-1].get("url") or ""))
+        if len(audio_files) == 1:
+            item = audio_files[0]
+            return [{
+                "url": self._validate_storage_url(str(item.get("url") or "")),
+                "name": str(item.get("name") or "فایل صوتی"),
+                "document_id": str(item.get("document_id") or ""),
+            }]
+        if len(audio_files) > 1:
+            raise ValueError(
+                "چند فایل صوتی در نشست وجود دارد. برای جلوگیری از تحلیل فایل اشتباه، "
+                "از «اسناد من» یک یا چند فایل را انتخاب کنید."
+            )
+        raise ValueError("لطفاً ابتدا یک فایل صوتی را بارگذاری یا برای تحلیل انتخاب کنید.")
 
-        raise ValueError("لطفاً ابتدا یک فایل صوتی را بارگذاری کنید.")
+    @staticmethod
+    def _deduplicate_input_files(files: list[dict[str, str]]) -> list[dict[str, str]]:
+        unique: dict[str, dict[str, str]] = {}
+        for item in files:
+            unique.setdefault(item["url"], item)
+        if not unique:
+            raise ValueError("لطفاً حداقل یک فایل صوتی را برای تحلیل انتخاب کنید.")
+        return list(unique.values())
+
+    def _resolve_input_url(self, params: dict[str, Any], session: Any) -> str:
+        files = self._resolve_input_files(params, session)
+        if len(files) != 1:
+            raise ValueError("برای این مرحله باید دقیقاً یک فایل صوتی مشخص شده باشد.")
+        return files[0]["url"]
+
+    @staticmethod
+    def _sha256_file(path: str) -> str:
+        digest = hashlib.sha256()
+        with open(path, "rb") as handle:
+            for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                digest.update(chunk)
+        return digest.hexdigest()
 
     @staticmethod
     def _is_audio_file(item: dict[str, Any]) -> bool:
@@ -503,6 +649,7 @@ class AudioIntelligenceService:
         payload = {
             "schema_version": TRANSCRIPTION_CACHE_SCHEMA_VERSION,
             "asset_id": media.asset_id,
+            "content_sha256": prepared.get("audio_content_sha256"),
             "capability": CAPABILITY_NAMES["transcription"],
             "provider": policy.get(CAPABILITY_NAMES["transcription"]),
             "options": options,
@@ -541,7 +688,7 @@ class AudioIntelligenceService:
                 provenance=provenance,
             )
         except Exception:
-            state.get("assets", {}).pop(media.asset_id, None)
+            (state.get("assets") or {}).pop(cache_key, None)
             return None
 
     async def _get_diarization(self, core, media, prepared):

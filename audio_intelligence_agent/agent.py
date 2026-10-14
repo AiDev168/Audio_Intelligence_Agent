@@ -228,26 +228,46 @@ class AudioIntelligenceAgent(BaseAgent):
                 )
 
         answer = result.get("answer")
-        if isinstance(answer, dict):
-            citations = answer.get("citations") or []
-            if citations:
-                yield AgentEvent(
-                    type="sources",
-                    data={
-                        "execution_id": context.execution_id,
-                        "sources": [
+        batch_results = result.get("batch_results")
+        source_rows = []
+        if isinstance(batch_results, list):
+            for batch_item in batch_results:
+                item_result = batch_item.get("result") or {}
+                item_answer = item_result.get("answer")
+                citations = (
+                    item_answer.get("citations") or []
+                    if isinstance(item_answer, dict)
+                    else []
+                )
+                for item in citations:
+                    if isinstance(item, dict):
+                        source_rows.append(
                             {
+                                "filename": batch_item.get("filename"),
                                 "evidence_id": item.get("evidence_id"),
-                                "asset_id": item.get("asset_id"),
+                                "asset_id": item.get("asset_id") or batch_item.get("asset_id"),
                                 "start": (item.get("interval") or {}).get("start"),
                                 "end": (item.get("interval") or {}).get("end"),
                                 "text": item.get("excerpt"),
                             }
-                            for item in citations
-                            if isinstance(item, dict)
-                        ],
-                    },
-                )
+                        )
+        elif isinstance(answer, dict):
+            source_rows = [
+                {
+                    "evidence_id": item.get("evidence_id"),
+                    "asset_id": item.get("asset_id"),
+                    "start": (item.get("interval") or {}).get("start"),
+                    "end": (item.get("interval") or {}).get("end"),
+                    "text": item.get("excerpt"),
+                }
+                for item in (answer.get("citations") or [])
+                if isinstance(item, dict)
+            ]
+        if source_rows:
+            yield AgentEvent(
+                type="sources",
+                data={"execution_id": context.execution_id, "sources": source_rows},
+            )
 
         done_data = {
             "execution_id": context.execution_id,
@@ -255,7 +275,11 @@ class AudioIntelligenceAgent(BaseAgent):
             "operation": result.get("operation"),
             "asset_id": result.get("asset_id"),
         }
-        if isinstance(answer, dict) and answer.get("answer"):
+        if isinstance(batch_results, list):
+            done_data["asset_ids"] = result.get("asset_ids") or []
+            done_data["file_count"] = len(batch_results)
+            done_data["text"] = self._batch_completion_text(result)
+        elif isinstance(answer, dict) and answer.get("answer"):
             done_data["text"] = str(answer["answer"])
             done_data["question"] = str(answer.get("question") or "")
             done_data["citations"] = answer.get("citations") or []
@@ -283,6 +307,11 @@ class AudioIntelligenceAgent(BaseAgent):
         context: ExecutionContext,
     ) -> dict[str, str] | None:
         operation = result.get("operation")
+        if isinstance(result.get("batch_results"), list):
+            return {
+                "content": AudioIntelligenceAgent._build_batch_markdown_report(result),
+                "filename": f"audio_batch_{operation}_{context.execution_id}.md",
+            }
 
         if operation == "summary":
             summary = result.get("summary")
@@ -306,6 +335,86 @@ class AudioIntelligenceAgent(BaseAgent):
             "content": content,
             "filename": f"audio_analysis_{context.execution_id}.json",
         }
+
+    @staticmethod
+    def _batch_completion_text(result: dict[str, Any]) -> str:
+        items = result.get("batch_results") or []
+        lines = [f"تحلیل {len(items)} فایل صوتی تکمیل شد."]
+        for item in items:
+            filename = str(item.get("filename") or "فایل صوتی")
+            single = item.get("result") or {}
+            answer = single.get("answer")
+            summary = single.get("summary")
+            if isinstance(answer, dict) and str(answer.get("answer") or "").strip():
+                detail = str(answer["answer"]).strip()
+            elif isinstance(summary, dict) and str(summary.get("summary") or "").strip():
+                detail = str(summary["summary"]).strip()
+            elif single.get("transcript_text"):
+                detail = "رونویسی آماده است؛ متن کامل در گزارش پیوست قرار دارد."
+            else:
+                detail = "پردازش انجام شد؛ جزئیات در گزارش پیوست قرار دارد."
+            if len(detail) > 1400:
+                detail = detail[:1397].rstrip() + "..."
+            lines.extend(["", f"**{filename}**", detail])
+        return "\n".join(lines)
+
+    @staticmethod
+    def _build_batch_markdown_report(result: dict[str, Any]) -> str:
+        operation = str(result.get("operation") or "analyze")
+        items = result.get("batch_results") or []
+        lines = [
+            "# گزارش تجمیعی تحلیل صوتی",
+            "",
+            f"**عملیات:** {operation}",
+            f"**تعداد فایل‌ها:** {len(items)}",
+            "",
+        ]
+        for index, item in enumerate(items, start=1):
+            filename = str(item.get("filename") or f"فایل {index}")
+            single = item.get("result") or {}
+            lines.extend(
+                [
+                    f"## {index}. {filename}",
+                    "",
+                    f"**شناسه فایل:** {item.get('asset_id') or single.get('asset_id') or '—'}",
+                    "",
+                ]
+            )
+            answer = single.get("answer")
+            if isinstance(answer, dict):
+                question = str(answer.get("question") or "").strip()
+                answer_text = str(answer.get("answer") or "").strip()
+                if question:
+                    lines.extend(["### پرسش", "", question, ""])
+                if answer_text:
+                    lines.extend(["### پاسخ", "", answer_text, ""])
+            summary = single.get("summary")
+            if isinstance(summary, dict) and str(summary.get("summary") or "").strip():
+                lines.extend(["### خلاصه", "", str(summary["summary"]).strip(), ""])
+            transcript = str(single.get("transcript_text") or "").strip()
+            if transcript:
+                lines.extend(["### متن پیاده‌سازی‌شده", "", transcript, ""])
+            evidence = single.get("evidence")
+            if isinstance(evidence, dict) and evidence.get("spans"):
+                lines.extend(["### شواهد زمانی", ""])
+                for span in evidence.get("spans") or []:
+                    interval = span.get("interval") or {}
+                    excerpt = str(span.get("excerpt") or "").strip()
+                    lines.append(
+                        f"- {float(interval.get('start', 0) or 0):.2f} تا "
+                        f"{float(interval.get('end', 0) or 0):.2f} ثانیه: {excerpt}"
+                    )
+                lines.append("")
+            if not answer and not summary and not transcript and not evidence:
+                lines.extend([
+                    "جزئیات ساخت‌یافته:",
+                    "",
+                    chr(96) * 3 + "json",
+                    json.dumps(single, ensure_ascii=False, indent=2, default=str),
+                    chr(96) * 3,
+                    "",
+                ])
+        return "\n".join(lines).rstrip() + "\n"
 
     @staticmethod
     def _build_markdown_report(result: dict[str, Any]) -> str:

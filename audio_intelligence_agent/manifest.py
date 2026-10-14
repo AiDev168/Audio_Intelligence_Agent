@@ -20,7 +20,8 @@ AGENT_MANIFEST = {
                 "format": "file",
                 "accept": "audio/*",
                 "title": "فایل صوتی",
-                "description": "یک فایل صوتی را برای تحلیل انتخاب کنید.",
+                "description": "یک یا چند فایل صوتی را برای تحلیل انتخاب کنید.",
+                "multiple": True,
             },
             "operation": {
                 "type": "string",
