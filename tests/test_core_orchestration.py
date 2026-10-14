@@ -156,7 +156,7 @@ def test_selected_non_audio_document_is_rejected():
                 }
             ]
 
-    with pytest.raises(ValueError, match="فایل انتخاب‌شده"):
+    with pytest.raises(ValueError, match="برای تحلیل صوتی فقط فایل صوتی انتخاب کنید"):
         service._resolve_input_url(
             {"selected_document_ids": ["code"]},
             Session(),
