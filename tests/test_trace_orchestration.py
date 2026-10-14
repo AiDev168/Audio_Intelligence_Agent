@@ -162,7 +162,7 @@ def test_summary_orchestration_calls_transcription_before_semantic_stage(tmp_pat
 def test_trace_uses_protected_storage_reference():
     service = AudioIntelligenceService(
         core_service=object(),
-        file_access=FakeFileAccess(),
+        file_access=FakeFileAccess("unused"),
         settings={},
     )
 
