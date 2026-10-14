@@ -310,7 +310,6 @@ def test_non_ask_downloadable_report_keeps_legacy_structured_json():
     assert '"operation": "transcribe"' in report["content"]
 
 
-
 def test_multiple_selected_audio_documents_are_resolved_in_requested_order():
     service = AudioIntelligenceService(
         core_service=object(),
@@ -410,7 +409,6 @@ def test_transcription_cache_key_includes_file_content_digest():
     assert first != second
 
 
-
 def test_markdown_report_discloses_unavailable_optional_capabilities():
     from types import SimpleNamespace
 
@@ -436,7 +434,6 @@ def test_markdown_report_discloses_unavailable_optional_capabilities():
     assert "تشخیص رویدادهای صوتی" in report["content"]
 
 
-
 def test_natural_phrase_analyze_resolves_to_full_analysis():
     service = AudioIntelligenceService(
         core_service=object(),
@@ -447,7 +444,6 @@ def test_natural_phrase_analyze_resolves_to_full_analysis():
     assert service._resolve_operation("این فایل را تحلیل کن", {}) == "analyze"
     assert service._resolve_operation("تحلیل کامل انجام بده", {}) == "analyze"
     assert service._resolve_operation("این صوت درباره چه چیزی است؟", {}) == "ask"
-
 
 
 def test_execute_aggregates_multiple_audio_files_in_selected_order():
@@ -505,9 +501,7 @@ def test_execute_aggregates_multiple_audio_files_in_selected_order():
     assert result["asset_count"] == 2
     assert result["source_filenames"] == ["second.wav", "first.wav"]
     assert processed == ["/storage/second.wav", "/storage/first.wav"]
-    assert [
-        item["result"]["summary"]["summary"] for item in result["batch_results"]
-    ] == [
+    assert [item["result"]["summary"]["summary"] for item in result["batch_results"]] == [
         "summary for /storage/second.wav",
         "summary for /storage/first.wav",
     ]

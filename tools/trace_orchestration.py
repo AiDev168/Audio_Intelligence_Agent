@@ -99,9 +99,7 @@ class FakeCore:
         return FakeMedia(media_type=media_type)
 
     async def execute(self, capability: str, media: FakeMedia, *, options: dict[str, Any]):
-        self.trace.append(
-            f"CORE.execute capability={capability} asset={media.asset_id}"
-        )
+        self.trace.append(f"CORE.execute capability={capability} asset={media.asset_id}")
 
         if capability == "transcription":
             return FakeTranscription(

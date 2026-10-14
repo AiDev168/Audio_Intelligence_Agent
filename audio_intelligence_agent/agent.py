@@ -52,19 +52,13 @@ def _error_hint(capability: str | None) -> str:
             "Base URL، API Key و نام مدل زبانی را بررسی کنید و مطمئن شوید "
             "سرویس ریموت endpoint سازگار با /chat/completions دارد."
         ),
-        "topic-chapter": (
-            "تنظیمات مدل زبانی و دسترسی سرویس به /chat/completions را بررسی کنید."
-        ),
-        "entity-extraction": (
-            "تنظیمات مدل زبانی و پاسخ JSON سرویس را بررسی کنید."
-        ),
+        "topic-chapter": ("تنظیمات مدل زبانی و دسترسی سرویس به /chat/completions را بررسی کنید."),
+        "entity-extraction": ("تنظیمات مدل زبانی و پاسخ JSON سرویس را بررسی کنید."),
         "grounded-qa": (
             "تنظیمات مدل زبانی را بررسی کنید؛ Provider باید پاسخ JSON شامل "
             "answer و citations برگرداند."
         ),
-        "diarization": (
-            "توکن Hugging Face، دسترسی مدل pyannote و سازگاری device را بررسی کنید."
-        ),
+        "diarization": ("توکن Hugging Face، دسترسی مدل pyannote و سازگاری device را بررسی کنید."),
         "audio-event": (
             "Provider تولیدی تشخیص رویدادهای صوتی هنوز در Host assembly فعال نشده است."
         ),
@@ -164,9 +158,7 @@ class AudioIntelligenceAgent(BaseAgent):
                     "stage": "input_or_workflow",
                     "cause_type": type(exc).__name__,
                     "detail": str(exc)[:1200],
-                    "hint": (
-                        "فایل صوتی، دسترسی آن و operation/پارامترهای درخواست را بررسی کنید."
-                    ),
+                    "hint": ("فایل صوتی، دسترسی آن و operation/پارامترهای درخواست را بررسی کنید."),
                 },
             )
             return
@@ -235,9 +227,7 @@ class AudioIntelligenceAgent(BaseAgent):
                 item_result = batch_item.get("result") or {}
                 item_answer = item_result.get("answer")
                 citations = (
-                    item_answer.get("citations") or []
-                    if isinstance(item_answer, dict)
-                    else []
+                    item_answer.get("citations") or [] if isinstance(item_answer, dict) else []
                 )
                 for item in citations:
                     if isinstance(item, dict):
@@ -426,14 +416,16 @@ class AudioIntelligenceAgent(BaseAgent):
                     )
                 lines.append("")
             if not answer and not summary and not transcript and not evidence:
-                lines.extend([
-                    "جزئیات ساخت‌یافته:",
-                    "",
-                    chr(96) * 3 + "json",
-                    json.dumps(single, ensure_ascii=False, indent=2, default=str),
-                    chr(96) * 3,
-                    "",
-                ])
+                lines.extend(
+                    [
+                        "جزئیات ساخت‌یافته:",
+                        "",
+                        chr(96) * 3 + "json",
+                        json.dumps(single, ensure_ascii=False, indent=2, default=str),
+                        chr(96) * 3,
+                        "",
+                    ]
+                )
         return "\n".join(lines).rstrip() + "\n"
 
     @staticmethod
@@ -518,9 +510,7 @@ class AudioIntelligenceAgent(BaseAgent):
                 start = float(interval.get("start", 0.0) or 0.0)
                 end = float(interval.get("end", 0.0) or 0.0)
                 excerpt = str(citation.get("excerpt") or "").strip()
-                lines.append(
-                    f"- **استناد {index}:** {start:.2f} تا {end:.2f} ثانیه — {excerpt}"
-                )
+                lines.append(f"- **استناد {index}:** {start:.2f} تا {end:.2f} ثانیه — {excerpt}")
             lines.append("")
 
         return "\n".join(lines).rstrip() + "\n"

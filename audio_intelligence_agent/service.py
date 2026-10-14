@@ -133,9 +133,7 @@ class AudioIntelligenceService:
             "operation": operation,
             "batch_results": batch_results,
             "asset_count": len(batch_results),
-            "asset_ids": [
-                item["asset_id"] for item in batch_results if item.get("asset_id")
-            ],
+            "asset_ids": [item["asset_id"] for item in batch_results if item.get("asset_id")],
             "source_filenames": [item["filename"] for item in batch_results],
         }
 
@@ -392,8 +390,7 @@ class AudioIntelligenceService:
             )
             if trace_enabled:
                 print(
-                    "[AGENT TRACE] timeline:built "
-                    f"items={result['timeline']['item_count']}",
+                    f"[AGENT TRACE] timeline:built items={result['timeline']['item_count']}",
                     flush=True,
                 )
 
@@ -406,13 +403,9 @@ class AudioIntelligenceService:
         params: dict[str, Any],
         session: Any,
     ) -> list[dict[str, str]]:
-        active_files = (
-            session.get_active_files() if hasattr(session, "get_active_files") else []
-        )
+        active_files = session.get_active_files() if hasattr(session, "get_active_files") else []
         by_url = {
-            str(item.get("url") or ""): item
-            for item in active_files
-            if str(item.get("url") or "")
+            str(item.get("url") or ""): item for item in active_files if str(item.get("url") or "")
         }
 
         for key in ("audio_files", "audio_file", "input_file", "file"):
@@ -451,9 +444,9 @@ class AudioIntelligenceService:
         if isinstance(raw_selected, str):
             selected_ids = [raw_selected.strip()] if raw_selected.strip() else []
         else:
-            selected_ids = list(dict.fromkeys(
-                str(item).strip() for item in raw_selected if str(item).strip()
-            ))
+            selected_ids = list(
+                dict.fromkeys(str(item).strip() for item in raw_selected if str(item).strip())
+            )
         if selected_ids:
             by_id = {
                 str(item.get("document_id") or ""): item
@@ -490,11 +483,13 @@ class AudioIntelligenceService:
         audio_files = [item for item in active_files if self._is_audio_file(item)]
         if len(audio_files) == 1:
             item = audio_files[0]
-            return [{
-                "url": self._validate_storage_url(str(item.get("url") or "")),
-                "name": str(item.get("name") or "فایل صوتی"),
-                "document_id": str(item.get("document_id") or ""),
-            }]
+            return [
+                {
+                    "url": self._validate_storage_url(str(item.get("url") or "")),
+                    "name": str(item.get("name") or "فایل صوتی"),
+                    "document_id": str(item.get("document_id") or ""),
+                }
+            ]
         if len(audio_files) > 1:
             raise ValueError(
                 "چند فایل صوتی در نشست وجود دارد. برای جلوگیری از تحلیل فایل اشتباه، "
@@ -613,8 +608,8 @@ class AudioIntelligenceService:
         if trace_enabled:
             print(
                 "[AGENT TRACE] transcription:core_execute:done "
-                f"segments={len(getattr(result, "segments", ()))}, "
-                f"language={getattr(result, "language", None)!s}",
+                f"segments={len(getattr(result, 'segments', ()))}, "
+                f"language={getattr(result, 'language', None)!s}",
                 flush=True,
             )
         if cache_enabled:

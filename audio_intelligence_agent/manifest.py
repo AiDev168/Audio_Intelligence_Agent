@@ -113,8 +113,7 @@ AGENT_MANIFEST = {
                 "type": "string",
                 "title": "مسیر مدل WhisperX",
                 "description": (
-                    "مسیر پوشه یا مدل محلی موجود روی همین سیستم؛ در حالت محلی استفاده "
-                    "می‌شود."
+                    "مسیر پوشه یا مدل محلی موجود روی همین سیستم؛ در حالت محلی استفاده می‌شود."
                 ),
                 "default": "",
                 "showWhen": {
@@ -181,8 +180,7 @@ AGENT_MANIFEST = {
                 "format": "password",
                 "title": "کلید API تبدیل گفتار به متن",
                 "description": (
-                    "کلید دسترسی سرویس ریموت. در سامانه به‌صورت رمزنگاری‌شده نگهداری "
-                    "می‌شود."
+                    "کلید دسترسی سرویس ریموت. در سامانه به‌صورت رمزنگاری‌شده نگهداری می‌شود."
                 ),
                 "default": "",
                 "showWhen": {
@@ -221,8 +219,7 @@ AGENT_MANIFEST = {
                 "type": "string",
                 "title": "نشانی پایه مدل زبانی محلی",
                 "description": (
-                    "نشانی سرویس OpenAI-compatible محلی، برای نمونه "
-                    "http://127.0.0.1:1234/v1."
+                    "نشانی سرویس OpenAI-compatible محلی، برای نمونه http://127.0.0.1:1234/v1."
                 ),
                 "default": "http://127.0.0.1:1234/v1",
                 "showWhen": {
@@ -244,8 +241,7 @@ AGENT_MANIFEST = {
                 "type": "string",
                 "title": "Base URL مدل زبانی ریموت",
                 "description": (
-                    "نشانی پایه API سازگار با OpenAI، برای نمونه "
-                    "https://provider.example/v1."
+                    "نشانی پایه API سازگار با OpenAI، برای نمونه https://provider.example/v1."
                 ),
                 "default": "",
                 "showWhen": {
@@ -290,8 +286,7 @@ AGENT_MANIFEST = {
                 "type": "string",
                 "title": "مدل تفکیک گویندگان",
                 "description": (
-                    "در صورت استفاده از مقدار پیش‌فرض، مدل pyannote در runtime انتخاب "
-                    "می‌شود."
+                    "در صورت استفاده از مقدار پیش‌فرض، مدل pyannote در runtime انتخاب می‌شود."
                 ),
                 "default": "pyannote/speaker-diarization-community-1",
             },

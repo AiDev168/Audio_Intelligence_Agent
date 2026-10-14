@@ -49,7 +49,6 @@ def test_audio_error_hints_cover_user_relevant_capabilities() -> None:
     assert "hugging face" in _error_hint("diarization").lower()
 
 
-
 def test_core_gateway_prefers_host_owned_core_instance() -> None:
     core_marker = object()
     service = SimpleNamespace(
