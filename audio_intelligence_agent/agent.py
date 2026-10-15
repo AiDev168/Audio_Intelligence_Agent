@@ -161,20 +161,47 @@ class AudioIntelligenceAgent(BaseAgent):
         file_access = context.capabilities.get("agent_file_access")
         artifact_store = context.capabilities.get("artifact_store")
         media_core = context.capabilities.get("media_intelligence_core")
-        pending_report = (
-            (getattr(session, "state", {}).get("audio_intelligence") or {}).get(
-                "pending_download_report"
-            )
-            if download_requested
-            else None
+        audio_state = (getattr(session, "state", {}).get("audio_intelligence") or {})
+        pending_report = audio_state.get("pending_download_report") if download_requested else None
+        previous_report = (
+            audio_state.get("last_downloadable_report") if download_requested else None
         )
         if download_requested and not isinstance(pending_report, dict):
+            if isinstance(previous_report, dict) and previous_report.get("url"):
+                names = list(previous_report.get("source_filenames") or [])
+                yield AgentEvent(
+                    type="artifact",
+                    data={
+                        "type": "file",
+                        "title": str(previous_report.get("filename") or "audio_result.txt"),
+                        "url": str(previous_report["url"]),
+                        "agent_id": context.agent_id,
+                        "meta": {
+                            "kind": "audio_report",
+                            "operation": previous_report.get("operation"),
+                            "asset_id": previous_report.get("asset_id"),
+                            "format": "txt",
+                            "source_filename": names[0] if len(names) == 1 else "",
+                            "source_filenames": names,
+                        },
+                    },
+                )
+                completion_text = "فایل متنی نتیجه از قبل آماده است و دوباره ذخیره نشد."
+                yield AgentEvent(
+                    type="done",
+                    data={
+                        "execution_id": context.execution_id,
+                        "status": "completed",
+                        "operation": "download_report",
+                        "source_filenames": names,
+                        "text": completion_text,
+                    },
+                )
+                return
             yield AgentEvent(
                 type="error",
                 data={
-                    "text": (
-                        "گزارشی برای دانلود در این نشست آماده نیست. ابتدا فایل صوتی را تحلیل کنید."
-                    ),
+                    "text": "فایل متنی آماده‌ای در این نشست پیدا نشد. ابتدا تحلیل را اجرا کنید.",
                     "execution_id": context.execution_id,
                     "error_code": "audio_report_not_available",
                 },
@@ -360,6 +387,7 @@ class AudioIntelligenceAgent(BaseAgent):
         audio_state.pop("pending_download_report", None)
         source_filenames = self._report_source_filenames(result)
         pending_report = None
+        report_export_error = False
         if report is not None:
             source_parts = [self._safe_report_source_stem(name) for name in source_filenames]
             if len(source_parts) == 1:
@@ -379,7 +407,42 @@ class AudioIntelligenceAgent(BaseAgent):
                 "asset_id": result.get("asset_id"),
                 "source_filenames": source_filenames,
             }
-            audio_state["pending_download_report"] = pending_report
+            report_url, saved_filename, file_format = self._save_report(
+                report["content"],
+                filename=report_filename,
+                artifact_store=artifact_store,
+            )
+            if report_url:
+                audio_state["last_downloadable_report"] = {
+                    "url": report_url,
+                    "filename": saved_filename,
+                    "operation": result.get("operation"),
+                    "asset_id": result.get("asset_id"),
+                    "source_filenames": source_filenames,
+                }
+                audio_state.pop("pending_download_report", None)
+                yield AgentEvent(
+                    type="artifact",
+                    data={
+                        "type": "file",
+                        "title": saved_filename,
+                        "url": report_url,
+                        "agent_id": context.agent_id,
+                        "meta": {
+                            "kind": "audio_report",
+                            "operation": result.get("operation"),
+                            "asset_id": result.get("asset_id"),
+                            "format": file_format,
+                            "source_filename": (
+                                source_filenames[0] if len(source_filenames) == 1 else ""
+                            ),
+                            "source_filenames": source_filenames,
+                        },
+                    },
+                )
+            else:
+                audio_state["pending_download_report"] = pending_report
+                report_export_error = True
 
         answer = result.get("answer")
         batch_results = result.get("batch_results")
@@ -464,12 +527,23 @@ class AudioIntelligenceAgent(BaseAgent):
             else:
                 done_data["text"] = "تحلیل اجرا شد، اما متن قابل نمایش تولید نشد."
 
+        if report_export_error:
+            done_data["report_export_error"] = True
+            done_data["text"] = (
+                f"{done_data.get('text', 'تحلیل صوتی انجام شد.')}\n\n"
+                "نتیجه متنی در حافظه نشست نگه داشته شد، اما ذخیره فایل قابل دانلود ناموفق بود."
+            )
+
         yield AgentEvent(
             type="progress",
             data={
                 "stage": "completed",
                 "percent": 100,
-                "text": "تحلیل صوتی با موفقیت انجام شد.",
+                "text": (
+                    "تحلیل صوتی تمام شد؛ فایل متنی نتیجه پیوست شده است."
+                    if report is not None and not report_export_error
+                    else "تحلیل صوتی با موفقیت انجام شد."
+                ),
                 "execution_id": context.execution_id,
             },
         )
