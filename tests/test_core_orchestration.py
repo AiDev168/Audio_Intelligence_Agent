@@ -753,8 +753,7 @@ def test_report_is_prepared_but_only_exported_after_explicit_request(monkeypatch
     assert len(store.saved) == 1
     assert repeated_artifacts[0].data["url"] == artifacts[0].data["url"]
     assert any(
-        event.type == "done" and "از قبل آماده است" in event.data["text"]
-        for event in repeat_events
+        event.type == "done" and "از قبل آماده است" in event.data["text"] for event in repeat_events
     )
 
     async def execute_language(self, *, message, params, session, context):
