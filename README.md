@@ -27,7 +27,7 @@ Implemented in this branch:
 - evidence preparation
 - grounded Q&A
 - canonical timeline summary
-- on-demand protected downloadable report, created only after explicit user request
+- automatically attached downloadable TXT containing the request and generated analysis text; source media is never re-exported
 - standard progress/source/done/error/cancelled events
 - contract/unit tests for the plugin boundary
 
@@ -90,12 +90,13 @@ Supported user profiles: general, podcast, meeting, lecture, interview, call.
     AudioIntelligenceAgent.run_with_context()
         |
         +--> validate request/dependencies
-        +--> resolve protected media
+        +--> resolve protected audio/video media
+        +--> extract audio from video inputs with FFmpeg when needed
         +--> build MediaAsset
         +--> select minimum required Core capabilities
         +--> reuse compatible transcript cache
         +--> build timeline/evidence
-        +--> cache pending report data in the active session
+        +--> save and emit a downloadable TXT result artifact
         +--> emit standard AgentEvents
         |
         v
@@ -109,11 +110,11 @@ When Ai_cheshm injects a Media Core facade, the host owns provider routing. When
 
 ## Inputs and outputs
 
-Input parameters may include audio_file, operation and query.
+Input parameters support selecting multiple audio files and video files with extractable audio, plus operation and query.
 
 Operations: transcribe, language, diarize, speaker_analysis, search, topics, summary, entities, audio_events, evidence, ask and analyze.
 
-Normal analysis returns text in chat and caches report data in the active session. The Host saves and displays a downloadable artifact only after an explicit request such as «دانلود گزارش». Export filenames identify the source audio file or files. Grounded answers may also emit internal sources metadata.
+Normal analysis returns text in chat and automatically emits a downloadable TXT artifact containing the user's request and generated textual result. Video inputs are converted to a temporary audio track for analysis; source audio/video bytes are never included in the report. Grounded answers may also emit internal sources metadata.
 
 ## Independent trace before Host integration
 
