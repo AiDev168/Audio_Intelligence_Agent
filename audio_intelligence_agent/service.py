@@ -580,9 +580,25 @@ class AudioIntelligenceService:
         if mime.startswith("video/"):
             return True
         video_extensions = {
-            ".3g2", ".3gp", ".avi", ".flv", ".m2ts", ".m4v", ".mkv", ".mov",
-            ".mp4", ".mpe", ".mpeg", ".mpg", ".mts", ".mxf", ".ogv", ".ts",
-            ".vob", ".webm", ".wmv",
+            ".3g2",
+            ".3gp",
+            ".avi",
+            ".flv",
+            ".m2ts",
+            ".m4v",
+            ".mkv",
+            ".mov",
+            ".mp4",
+            ".mpe",
+            ".mpeg",
+            ".mpg",
+            ".mts",
+            ".mxf",
+            ".ogv",
+            ".ts",
+            ".vob",
+            ".webm",
+            ".wmv",
         }
         for value in (item.get("name"), item.get("url")):
             extension = os.path.splitext(str(value or "").split("?", 1)[0])[1].lower()
@@ -651,9 +667,7 @@ class AudioIntelligenceService:
             )
             _, stderr = await asyncio.wait_for(process.communicate(), timeout=timeout)
             diagnostic = (stderr or b"").decode("utf-8", errors="replace").casefold()
-            output_is_valid = (
-                os.path.isfile(output_path) and os.path.getsize(output_path) > 44
-            )
+            output_is_valid = os.path.isfile(output_path) and os.path.getsize(output_path) > 44
             if process.returncode != 0 or not output_is_valid:
                 no_audio_stream = (
                     "matches no streams" in diagnostic
