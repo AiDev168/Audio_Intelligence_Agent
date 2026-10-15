@@ -639,7 +639,6 @@ def test_report_is_prepared_but_only_exported_after_explicit_request(monkeypatch
         "analysis-1",
         {
             "agent_file_access": object(),
-            "artifact_store": store,
             "media_intelligence_core": object(),
         },
     )
@@ -726,7 +725,6 @@ def test_report_is_prepared_but_only_exported_after_explicit_request(monkeypatch
                 "language-1",
                 {
                     "agent_file_access": object(),
-                    "artifact_store": store,
                     "media_intelligence_core": object(),
                 },
             ),
