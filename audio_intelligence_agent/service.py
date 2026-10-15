@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import mimetypes
 import os
+import shutil
+import tempfile
 from dataclasses import fields
 from typing import Any
 
@@ -147,16 +150,55 @@ class AudioIntelligenceService:
     ) -> dict[str, Any]:
         prepared = dict(self.settings)
         prepared.update(params or {})
-
         operation = self._resolve_operation(message, prepared)
         input_url = self._resolve_input_url(prepared, session)
-        resolved_path = self.file_access.resolve(input_url)
+        source_path = self.file_access.resolve(input_url)
+        extracted_path = None
+        try:
+            resolved_path = source_path
+            is_video = self._is_video_path(source_path)
+            if is_video:
+                extracted_path = await self._extract_audio_from_video(source_path, prepared)
+                resolved_path = extracted_path
+            return await self._execute_single_from_path(
+                message=message,
+                params=params,
+                session=session,
+                context=context,
+                operation=operation,
+                input_url=input_url,
+                source_path=source_path,
+                resolved_path=resolved_path,
+                source_is_video=is_video,
+            )
+        finally:
+            if extracted_path and os.path.isfile(extracted_path):
+                try:
+                    os.unlink(extracted_path)
+                except OSError:
+                    pass
+
+    async def _execute_single_from_path(
+        self,
+        *,
+        message: str,
+        params: dict[str, Any],
+        session: Any,
+        context: Any,
+        operation: str,
+        input_url: str,
+        source_path: str,
+        resolved_path: str,
+        source_is_video: bool,
+    ) -> dict[str, Any]:
+        prepared = dict(self.settings)
+        prepared.update(params or {})
         prepared["audio_content_sha256"] = self._sha256_file(resolved_path)
 
         core = CoreCapabilityGateway(self.core_service, context)
         media = core.core.media_asset_from_path(
             resolved_path,
-            media_type=self._media_type(resolved_path),
+            media_type="audio/wav" if source_is_video else self._media_type(resolved_path),
         )
 
         trace_enabled = os.getenv("AUDIO_INTELLIGENCE_TRACE", "").strip() == "1"
@@ -425,9 +467,9 @@ class AudioIntelligenceService:
                     continue
                 url = self._validate_storage_url(url)
                 item = by_url.get(url, {})
-                if item and not self._is_audio_file(item):
+                if item and not self._is_supported_media_file(item):
                     raise ValueError(
-                        f"فایل «{item.get('name') or url}» فایل صوتی شناخته‌شده‌ای نیست."
+                        f"فایل «{item.get('name') or url}» صوتی یا ویدئوییِ پشتیبانی‌شده نیست."
                     )
                 name = supplied_name or str(item.get("name") or url.rsplit("/", 1)[-1])
                 resolved.append(
@@ -463,11 +505,12 @@ class AudioIntelligenceService:
             not_audio = [
                 str(item.get("name") or "فایل")
                 for item in selected_audio
-                if not self._is_audio_file(item)
+                if not self._is_supported_media_file(item)
             ]
             if not_audio:
                 raise ValueError(
-                    "برای تحلیل صوتی فقط فایل صوتی انتخاب کنید: " + "، ".join(not_audio[:5])
+                    "فقط فایل‌های صوتی یا ویدئویی دارای صدای قابل استخراج را انتخاب کنید: "
+                    + "، ".join(not_audio[:5])
                 )
             return self._deduplicate_input_files(
                 [
@@ -480,7 +523,7 @@ class AudioIntelligenceService:
                 ]
             )
 
-        audio_files = [item for item in active_files if self._is_audio_file(item)]
+        audio_files = [item for item in active_files if self._is_supported_media_file(item)]
         if len(audio_files) == 1:
             item = audio_files[0]
             return [
@@ -492,10 +535,10 @@ class AudioIntelligenceService:
             ]
         if len(audio_files) > 1:
             raise ValueError(
-                "چند فایل صوتی در نشست وجود دارد. برای جلوگیری از تحلیل فایل اشتباه، "
+                "چند فایل صوتی یا ویدئویی در نشست وجود دارد. برای جلوگیری از تحلیل فایل اشتباه، "
                 "از «اسناد من» یک یا چند فایل را انتخاب کنید."
             )
-        raise ValueError("لطفاً ابتدا یک فایل صوتی را بارگذاری یا برای تحلیل انتخاب کنید.")
+        raise ValueError("لطفاً ابتدا یک فایل صوتی یا ویدئویی دارای ترک صوتی را انتخاب کنید.")
 
     @staticmethod
     def _deduplicate_input_files(files: list[dict[str, str]]) -> list[dict[str, str]]:
@@ -522,7 +565,7 @@ class AudioIntelligenceService:
 
     @staticmethod
     def _is_audio_file(item: dict[str, Any]) -> bool:
-        mime = str(item.get("mime") or "").strip().lower()
+        mime = str(item.get("mime") or item.get("mime_type") or "").strip().lower()
         if mime.startswith("audio/"):
             return True
         for value in (item.get("name"), item.get("url")):
@@ -530,6 +573,114 @@ class AudioIntelligenceService:
             if guessed and guessed.startswith("audio/"):
                 return True
         return False
+
+    @staticmethod
+    def _is_video_file(item: dict[str, Any]) -> bool:
+        mime = str(item.get("mime") or item.get("mime_type") or "").strip().lower()
+        if mime.startswith("video/"):
+            return True
+        video_extensions = {
+            ".3g2", ".3gp", ".avi", ".flv", ".m2ts", ".m4v", ".mkv", ".mov",
+            ".mp4", ".mpe", ".mpeg", ".mpg", ".mts", ".mxf", ".ogv", ".ts",
+            ".vob", ".webm", ".wmv",
+        }
+        for value in (item.get("name"), item.get("url")):
+            extension = os.path.splitext(str(value or "").split("?", 1)[0])[1].lower()
+            if extension in video_extensions:
+                return True
+            guessed = mimetypes.guess_type(str(value or ""))[0]
+            if guessed and guessed.startswith("video/"):
+                return True
+        return False
+
+    @classmethod
+    def _is_supported_media_file(cls, item: dict[str, Any]) -> bool:
+        return cls._is_audio_file(item) or cls._is_video_file(item)
+
+    @classmethod
+    def _is_video_path(cls, path: str) -> bool:
+        if cls._is_video_file({"name": os.path.basename(path), "url": path}):
+            return True
+        return str(mimetypes.guess_type(path)[0] or "").lower().startswith("video/")
+
+    @staticmethod
+    async def _extract_audio_from_video(path: str, settings: dict[str, Any]) -> str:
+        configured = str(
+            settings.get("ffmpeg_executable") or settings.get("ffmpeg_path") or ""
+        ).strip()
+        executable = (
+            configured
+            if configured and os.path.isfile(configured)
+            else shutil.which(configured or "ffmpeg")
+        )
+        if not executable:
+            raise ValueError(
+                "برای استخراج صدای ویدئو، FFmpeg باید روی سیستم میزبان نصب و در PATH باشد "
+                "یا مسیر آن در تنظیمات ffmpeg_path تعیین شود."
+            )
+
+        file_descriptor, output_path = tempfile.mkstemp(
+            prefix="audio-intelligence-",
+            suffix=".wav",
+        )
+        os.close(file_descriptor)
+        process = None
+        try:
+            timeout = float(settings.get("audio_extraction_timeout_seconds") or 3600)
+            process = await asyncio.create_subprocess_exec(
+                executable,
+                "-nostdin",
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-y",
+                "-i",
+                path,
+                "-map",
+                "0:a:0",
+                "-vn",
+                "-ac",
+                "1",
+                "-ar",
+                "16000",
+                "-c:a",
+                "pcm_s16le",
+                output_path,
+                stdout=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            _, stderr = await asyncio.wait_for(process.communicate(), timeout=timeout)
+            diagnostic = (stderr or b"").decode("utf-8", errors="replace").casefold()
+            output_is_valid = (
+                os.path.isfile(output_path) and os.path.getsize(output_path) > 44
+            )
+            if process.returncode != 0 or not output_is_valid:
+                no_audio_stream = (
+                    "matches no streams" in diagnostic
+                    or "does not contain any stream" in diagnostic
+                )
+                if no_audio_stream:
+                    raise ValueError("این ویدئو ترک صوتی قابل استخراج ندارد.")
+                raise ValueError("استخراج صدا از ویدئو با FFmpeg ناموفق بود.")
+            return output_path
+        except asyncio.TimeoutError as exc:
+            if process is not None and process.returncode is None:
+                process.kill()
+                await process.wait()
+            try:
+                os.unlink(output_path)
+            except OSError:
+                pass
+            raise ValueError("زمان مجاز استخراج صدا از ویدئو به پایان رسید.") from exc
+        except BaseException:
+            if process is not None and process.returncode is None:
+                process.kill()
+                await process.wait()
+            try:
+                os.unlink(output_path)
+            except OSError:
+                pass
+            raise
 
     @staticmethod
     def _validate_storage_url(value: str) -> str:
