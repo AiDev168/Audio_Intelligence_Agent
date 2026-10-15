@@ -93,8 +93,16 @@ class AudioIntelligenceAgent(BaseAgent):
                 "گزارش رو دانلود",
                 "دانلود خروجی",
                 "خروجی را دانلود",
+                "دانلود فایل تکست",
+                "دانلود فایل متنی",
+                "دانلود فایل متن",
+                "فایل تکست را دانلود",
+                "فایل متنی را دانلود",
+                "دانلود متن",
                 "download report",
                 "download the report",
+                "download text",
+                "download txt",
                 "export report",
             )
         )
@@ -342,7 +350,12 @@ class AudioIntelligenceAgent(BaseAgent):
             )
             return
 
-        report = self._build_downloadable_report(result, context)
+        request_text = str(params.get("query") or message or "").strip()
+        report = self._build_downloadable_report(
+            result,
+            context,
+            request_text=request_text,
+        )
         audio_state = session.state.setdefault("audio_intelligence", {})
         audio_state.pop("pending_download_report", None)
         source_filenames = self._report_source_filenames(result)
@@ -430,10 +443,26 @@ class AudioIntelligenceAgent(BaseAgent):
             )
             done_data["question"] = str(answer.get("question") or "")
             done_data["citations"] = answer.get("citations") or []
-        elif result.get("transcript_text"):
-            done_data["text"] = "تبدیل گفتار به متن با موفقیت انجام شد."
-        elif result.get("summary"):
-            done_data["text"] = "تحلیل صوتی با موفقیت انجام شد."
+        else:
+            summary = result.get("summary")
+            summary_text = (
+                str(summary.get("summary") or "").strip()
+                if isinstance(summary, dict)
+                else str(summary or "").strip()
+            )
+            transcript_text = str(result.get("transcript_text") or "").strip()
+            operation = str(result.get("operation") or "").strip().lower()
+            if summary_text:
+                done_data["text"] = summary_text
+            elif transcript_text and operation == "transcribe":
+                done_data["text"] = transcript_text
+            elif transcript_text:
+                done_data["text"] = (
+                    "تحلیل انجام شد، اما متن خلاصه تولید نشد. متن پیاده‌سازی‌شده:\n\n"
+                    + transcript_text
+                )
+            else:
+                done_data["text"] = "تحلیل اجرا شد، اما متن قابل نمایش تولید نشد."
         else:
             done_data["text"] = "Audio analysis completed."
 
@@ -472,37 +501,200 @@ class AudioIntelligenceAgent(BaseAgent):
     def _build_downloadable_report(
         result: dict[str, Any],
         context: ExecutionContext,
+        *,
+        request_text: str = "",
     ) -> dict[str, str] | None:
-        operation = result.get("operation")
-        if isinstance(result.get("batch_results"), list):
-            return {
-                "content": AudioIntelligenceAgent._build_batch_markdown_report(result),
-                "filename": f"audio_batch_{operation}_{context.execution_id}.md",
+        """Build a plain-text export of generated text; never export or attach source audio."""
+        operation = str(result.get("operation") or "analyze").strip().lower()
+        operation_labels = {
+            "transcribe": "تبدیل گفتار به متن",
+            "language": "تشخیص زبان",
+            "diarize": "تفکیک گویندگان",
+            "speaker_analysis": "تحلیل گویندگان",
+            "search": "جست‌وجو در متن صوت",
+            "topics": "موضوعات و فصل‌ها",
+            "summary": "خلاصه‌سازی",
+            "entities": "استخراج موجودیت‌ها",
+            "evidence": "شواهد زمانی",
+            "ask": "پرسش و پاسخ مستند",
+            "analyze": "تحلیل کامل صوت",
+        }
+        lines = ["نتیجه متنی تحلیل صوتی", ""]
+        generated_output_found = False
+
+        if request_text.strip():
+            lines.extend(["درخواست کاربر:", request_text.strip(), ""])
+        lines.extend([f"عملیات: {operation_labels.get(operation, operation)}", ""])
+
+        def add_value(label: str, value: Any, depth: int = 0) -> None:
+            """Render structured analysis values as readable text instead of JSON."""
+            if value is None or value == "":
+                return
+            indent = "  " * depth
+            labels = {
+                "title": "عنوان",
+                "summary": "خلاصه",
+                "text": "متن",
+                "description": "توضیح",
+                "start": "شروع",
+                "end": "پایان",
+                "speaker": "گوینده",
+                "speaker_id": "شناسه گوینده",
+                "entity_type": "نوع موجودیت",
+                "normalized_text": "متن استاندارد",
+                "chapters": "فصل‌ها",
+                "entities": "موجودیت‌ها",
+                "language": "زبان",
+                "primary": "نتیجه اصلی",
+                "confidence": "اطمینان",
+                "excerpt": "متن شاهد",
+                "question": "پرسش",
+                "answer": "پاسخ",
+                "name": "نام",
+                "event_type": "نوع رویداد",
+                "status": "وضعیت",
+                "interval": "بازه زمانی",
             }
-
-        if operation == "summary":
-            summary = result.get("summary")
-            text = summary.get("summary") if isinstance(summary, dict) else None
-            if isinstance(text, str) and text.strip():
-                source_filename = str(result.get("source_filename") or "").strip()
-                prefix = f"فایل صوتی: {source_filename}\n\n" if source_filename else ""
-                return {
-                    "content": prefix + text.strip() + "\n",
-                    "filename": f"audio_summary_{context.execution_id}.txt",
-                }
-
-        if operation in {"ask", "evidence", "analyze"}:
-            return {
-                "content": AudioIntelligenceAgent._build_markdown_report(result),
-                "filename": f"audio_{operation}_{context.execution_id}.md",
+            hidden_keys = {
+                "asset_id",
+                "segment_id",
+                "evidence_id",
+                "provenance",
+                "provider_version",
+                "model_version",
+                "core_schema_version",
+                "source_asset_id",
             }
+            if isinstance(value, str):
+                text = value.strip()
+                if text:
+                    lines.append(f"{indent}{label + ': ' if label else ''}{text}")
+                return
+            if isinstance(value, (int, float, bool)):
+                lines.append(f"{indent}{label + ': ' if label else ''}{value}")
+                return
+            if isinstance(value, dict):
+                if label:
+                    lines.append(f"{indent}{label}:")
+                for key, item_value in value.items():
+                    if key in hidden_keys or item_value is None or item_value == "":
+                        continue
+                    child_label = labels.get(
+                        str(key),
+                        str(key).replace("_", " ").strip().capitalize(),
+                    )
+                    add_value(child_label, item_value, depth + (1 if label else 0))
+                return
+            if isinstance(value, (list, tuple)):
+                if label:
+                    lines.append(f"{indent}{label}:")
+                for index, item_value in enumerate(value, start=1):
+                    if isinstance(item_value, (dict, list, tuple)):
+                        add_value(f"مورد {index}", item_value, depth + (1 if label else 0))
+                    else:
+                        add_value("", item_value, depth + (1 if label else 0))
 
-        # Keep structured JSON internally useful for operations that do not
-        # yet have a dedicated human-readable export contract.
-        content = json.dumps(result, ensure_ascii=False, indent=2, default=str)
+        def add_single_result(item: dict[str, Any], filename: str = "") -> None:
+            nonlocal generated_output_found
+            source_filename = filename or str(item.get("source_filename") or "").strip()
+            if source_filename:
+                lines.extend([f"فایل مبدأ: {source_filename}", ""])
+
+            answer = item.get("answer")
+            if isinstance(answer, dict):
+                question = str(answer.get("question") or "").strip()
+                answer_text = str(answer.get("answer") or "").strip()
+                if question:
+                    lines.extend(["پرسش:", question, ""])
+                if answer_text:
+                    lines.extend(["پاسخ تولیدشده:", answer_text, ""])
+                    generated_output_found = True
+                citations = answer.get("citations") or []
+                if citations:
+                    lines.append("استنادها:")
+                    for index, citation in enumerate(citations, start=1):
+                        if not isinstance(citation, dict):
+                            continue
+                        interval = citation.get("interval") or {}
+                        start_time = interval.get("start")
+                        end_time = interval.get("end")
+                        excerpt = str(citation.get("excerpt") or "").strip()
+                        timing = (
+                            f"{float(start_time):.2f} تا {float(end_time):.2f} ثانیه"
+                            if start_time is not None and end_time is not None
+                            else "زمان نامشخص"
+                        )
+                        if excerpt:
+                            lines.append(f"{index}. {timing}: {excerpt}")
+                            generated_output_found = True
+                    lines.append("")
+
+            summary = item.get("summary")
+            summary_text = summary.get("summary") if isinstance(summary, dict) else summary
+            if isinstance(summary_text, str) and summary_text.strip():
+                lines.extend(["خلاصه تولیدشده:", summary_text.strip(), ""])
+                generated_output_found = True
+
+            transcript_text = str(item.get("transcript_text") or "").strip()
+            if transcript_text and operation in {"transcribe", "analyze"}:
+                lines.extend(["متن پیاده‌سازی‌شده:", transcript_text, ""])
+                generated_output_found = True
+
+            structured_sections = (
+                ("language", "نتیجه تشخیص زبان"),
+                ("topics", "موضوعات و فصل‌ها"),
+                ("entities", "موجودیت‌های استخراج‌شده"),
+                ("search", "نتیجه جست‌وجو"),
+                ("diarization", "نتیجه تفکیک گویندگان"),
+                ("speaker_analysis", "تحلیل گویندگان"),
+                ("audio_events", "رویدادهای صوتی"),
+                ("evidence", "شواهد زمانی"),
+            )
+            for key, label in structured_sections:
+                value = item.get(key)
+                if not value:
+                    continue
+                if key == "evidence" and isinstance(value, dict) and value.get("spans"):
+                    lines.append("شواهد زمانی:")
+                    for index, span in enumerate(value.get("spans") or [], start=1):
+                        if not isinstance(span, dict):
+                            continue
+                        interval = span.get("interval") or {}
+                        start_time = interval.get("start")
+                        end_time = interval.get("end")
+                        excerpt = str(span.get("excerpt") or "").strip()
+                        timing = (
+                            f"{float(start_time):.2f} تا {float(end_time):.2f} ثانیه"
+                            if start_time is not None and end_time is not None
+                            else "زمان نامشخص"
+                        )
+                        if excerpt:
+                            lines.append(f"{index}. {timing}: {excerpt}")
+                            generated_output_found = True
+                    lines.append("")
+                else:
+                    lines.append(f"{label}:")
+                    add_value("", value, 1)
+                    lines.append("")
+                    generated_output_found = True
+
+        batch_results = result.get("batch_results")
+        if isinstance(batch_results, list):
+            for index, batch_item in enumerate(batch_results, start=1):
+                item_result = batch_item.get("result") or {}
+                filename = str(batch_item.get("filename") or f"فایل {index}")
+                if index > 1:
+                    lines.extend(["", "----------------------------------------", ""])
+                add_single_result(item_result, filename)
+        else:
+            add_single_result(result)
+
+        if not generated_output_found:
+            return None
+        content = "\n".join(lines).rstrip() + "\n"
         return {
             "content": content,
-            "filename": f"audio_analysis_{context.execution_id}.json",
+            "filename": f"audio_result_{operation}_{context.execution_id}.txt",
         }
 
     @staticmethod
