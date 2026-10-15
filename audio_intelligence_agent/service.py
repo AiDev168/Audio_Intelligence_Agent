@@ -150,7 +150,6 @@ class AudioIntelligenceService:
         operation = self._resolve_operation(message, prepared)
         input_url = self._resolve_input_url(prepared, session)
         source_path = self.file_access.resolve(input_url)
-        is_video = self._is_video_path(source_path)
         # Match Video Intelligence: pass the original protected media asset to
         # the Core transcription capability and let the configured provider
         # decode its audio stream. The Agent does not own a second FFmpeg path.
@@ -163,7 +162,6 @@ class AudioIntelligenceService:
             input_url=input_url,
             source_path=source_path,
             resolved_path=source_path,
-            source_is_video=is_video,
         )
 
     async def _execute_single_from_path(
@@ -177,7 +175,6 @@ class AudioIntelligenceService:
         input_url: str,
         source_path: str,
         resolved_path: str,
-        source_is_video: bool,
     ) -> dict[str, Any]:
         prepared = dict(self.settings)
         prepared.update(params or {})
