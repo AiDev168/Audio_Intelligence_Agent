@@ -703,16 +703,18 @@ def test_report_is_created_only_after_explicit_download_request(monkeypatch):
         ]
 
     normal_events = asyncio.run(collect_events("Analyze the recording", normal_context))
-    assert not [event for event in normal_events if event.type == "artifact"]
-    assert store.saved == []
-    pending = session.state["audio_intelligence"]["pending_download_report"]
-    assert pending["source_filenames"] == ["meeting.wav"]
-    assert pending["filename"].startswith("meeting_")
-    assert pending["filename"].endswith(".txt")
-    assert "درخواست کاربر:" in pending["content"]
-    assert "Analyze the recording" in pending["content"]
-    assert "The generated summary says the meeting starts now." in pending["content"]
-    assert "[0.00-1.00] hello" in pending["content"]
+    artifacts = [event for event in normal_events if event.type == "artifact"]
+    assert len(artifacts) == 1
+    assert len(store.saved) == 1
+    exported = session.state["audio_intelligence"]["last_downloadable_report"]
+    assert exported["source_filenames"] == ["meeting.wav"]
+    assert exported["filename"].startswith("meeting_")
+    assert exported["filename"].endswith(".txt")
+    assert "درخواست کاربر:" in store.saved[0][1]
+    assert "Analyze the recording" in store.saved[0][1]
+    assert "The generated summary says the meeting starts now." in store.saved[0][1]
+    assert "[0.00-1.00] hello" in store.saved[0][1]
+    assert "آهنگ" not in store.saved[0][1]
     assert agent_module.AudioIntelligenceAgent._is_download_request("دانلود فایل متنی", {})
     done = next(event for event in normal_events if event.type == "done")
     assert "The generated summary says the meeting starts now." in done.data["text"]
@@ -725,20 +727,18 @@ def test_report_is_created_only_after_explicit_download_request(monkeypatch):
     ]
     assert completion_events
     assert all("دانلود فایل متنی" not in event.data.get("text", "") for event in completion_events)
-    assert store.saved == []
+    assert artifacts[0].data["meta"]["source_filename"] == "meeting.wav"
+    assert artifacts[0].data["title"].startswith("meeting_")
+    assert artifacts[0].data["url"] == exported["url"]
 
     download_context = FakeContext("download-1", {"artifact_store": store})
     download_events = asyncio.run(collect_events("دانلود فایل متنی", download_context))
-    artifacts = [event for event in download_events if event.type == "artifact"]
+    repeated_artifacts = [event for event in download_events if event.type == "artifact"]
 
-    assert len(artifacts) == 1
+    assert len(repeated_artifacts) == 1
     assert len(store.saved) == 1
-    assert store.saved[0][0].startswith("meeting_")
-    assert store.saved[0][0].endswith(".txt")
-    assert "The generated summary says the meeting starts now." in store.saved[0][1]
-    assert "Analyze the recording" in store.saved[0][1]
-    assert artifacts[0].data["meta"]["source_filename"] == "meeting.wav"
-    assert artifacts[0].data["title"].startswith("meeting_")
+    assert repeated_artifacts[0].data["url"] == artifacts[0].data["url"]
     assert any(
-        event.type == "done" and "meeting.wav" in event.data["text"] for event in download_events
+        event.type == "done" and "از قبل آماده است" in event.data["text"]
+        for event in download_events
     )
