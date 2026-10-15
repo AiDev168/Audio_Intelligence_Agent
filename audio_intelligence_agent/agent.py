@@ -213,7 +213,6 @@ class AudioIntelligenceAgent(BaseAgent):
             if download_requested
             else (
                 ("agent_file_access", file_access),
-                ("artifact_store", artifact_store),
                 ("media_intelligence_core", media_core),
             )
         )
@@ -396,7 +395,6 @@ class AudioIntelligenceAgent(BaseAgent):
         audio_state = session.state.setdefault("audio_intelligence", {})
         audio_state.pop("pending_download_report", None)
         source_filenames = self._report_source_filenames(result)
-        report_export_error = False
         if report is not None:
             source_parts = [self._safe_report_source_stem(name) for name in source_filenames]
             if len(source_parts) == 1:
@@ -546,23 +544,12 @@ class AudioIntelligenceAgent(BaseAgent):
             else:
                 done_data["text"] = "تحلیل اجرا شد، اما متن قابل نمایش تولید نشد."
 
-        if report_export_error:
-            done_data["report_export_error"] = True
-            done_data["text"] = (
-                f"{done_data.get('text', 'تحلیل صوتی انجام شد.')}\n\n"
-                "نتیجه متنی در حافظه نشست نگه داشته شد، اما ذخیره فایل قابل دانلود ناموفق بود."
-            )
-
         yield AgentEvent(
             type="progress",
             data={
                 "stage": "completed",
                 "percent": 100,
-                "text": (
-                    "تحلیل صوتی با موفقیت انجام شد."
-                    if not report_export_error
-                    else "تحلیل صوتی انجام شد، اما ذخیره گزارش با خطا مواجه شد."
-                ),
+                "text": "تحلیل صوتی با موفقیت انجام شد.",
                 "execution_id": context.execution_id,
             },
         )
