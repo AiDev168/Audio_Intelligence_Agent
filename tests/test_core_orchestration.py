@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, field
+from pathlib import Path
 
 import pytest
 
@@ -156,7 +157,7 @@ def test_selected_non_audio_document_is_rejected():
                 }
             ]
 
-    with pytest.raises(ValueError, match="برای تحلیل صوتی فقط فایل صوتی انتخاب کنید"):
+    with pytest.raises(ValueError, match="فقط فایل‌های صوتی یا ویدئویی"):
         service._resolve_input_url(
             {"selected_document_ids": ["code"]},
             Session(),
@@ -362,6 +363,91 @@ def test_multiple_selected_audio_documents_are_resolved_in_requested_order():
     ]
 
 
+def test_multiple_selected_audio_and_video_documents_are_resolved_in_requested_order():
+    service = AudioIntelligenceService(
+        core_service=object(),
+        file_access=FakeFileAccess(),
+        settings={},
+    )
+
+    class Session:
+        state = {}
+
+        def get_active_files(self):
+            return [
+                {
+                    "document_id": "voice",
+                    "url": "/storage/voice.mp3",
+                    "name": "voice.mp3",
+                    "mime": "audio/mpeg",
+                    "active": True,
+                    "legacy": False,
+                },
+                {
+                    "document_id": "video",
+                    "url": "/storage/meeting.mp4",
+                    "name": "meeting.mp4",
+                    "mime": "video/mp4",
+                    "active": True,
+                    "legacy": False,
+                },
+            ]
+
+    files = service._resolve_input_files(
+        {"selected_document_ids": ["video", "voice"]},
+        Session(),
+    )
+    assert [item["name"] for item in files] == ["meeting.mp4", "voice.mp3"]
+    assert [item["document_id"] for item in files] == ["video", "voice"]
+
+
+def test_video_extraction_uses_first_audio_stream_without_shell(monkeypatch, tmp_path):
+    import audio_intelligence_agent.service as service_module
+
+    source = tmp_path / "meeting.mp4"
+    source.write_bytes(b"video placeholder")
+    command = []
+
+    class FakeProcess:
+        returncode = 0
+
+        async def communicate(self):
+            return None, b""
+
+        def kill(self):
+            self.returncode = -9
+
+        async def wait(self):
+            return self.returncode
+
+    async def fake_create_subprocess_exec(*args, **kwargs):
+        command.extend(args)
+        Path(str(args[-1])).write_bytes(b"RIFF" + b"0" * 60)
+        return FakeProcess()
+
+    monkeypatch.setattr(service_module.shutil, "which", lambda _: "ffmpeg-test")
+    monkeypatch.setattr(
+        service_module.asyncio,
+        "create_subprocess_exec",
+        fake_create_subprocess_exec,
+    )
+
+    output_path = asyncio.run(
+        service_module.AudioIntelligenceService._extract_audio_from_video(
+            str(source),
+            {},
+        )
+    )
+    try:
+        assert output_path.endswith(".wav")
+        assert str(source) in command
+        assert command[command.index("-map") + 1] == "0:a:0"
+        assert "-vn" in command
+        assert command[command.index("-ar") + 1] == "16000"
+    finally:
+        Path(output_path).unlink(missing_ok=True)
+
+
 def test_multiple_active_audio_files_are_never_silently_resolved_to_the_last_one():
     service = AudioIntelligenceService(
         core_service=object(),
@@ -519,6 +605,16 @@ def test_execute_aggregates_multiple_audio_files_in_selected_order():
     ]
 
 
+def test_manifest_supports_multi_select_audio_and_video_inputs():
+    from audio_intelligence_agent.manifest import AGENT_MANIFEST
+
+    file_input = AGENT_MANIFEST["params"]["properties"]["audio_file"]
+    assert file_input["type"] == "array"
+    assert file_input["multiple"] is True
+    assert file_input["accept"] == "audio/*,video/*"
+    assert file_input["items"]["format"] == "file"
+
+
 def test_manifest_does_not_offer_audio_events_without_a_provider():
     from audio_intelligence_agent.manifest import AGENT_MANIFEST
 
@@ -621,7 +717,13 @@ def test_report_is_created_only_after_explicit_download_request(monkeypatch):
     done = next(event for event in normal_events if event.type == "done")
     assert "The generated summary says the meeting starts now." in done.data["text"]
     assert "تبدیل گفتار به متن با موفقیت انجام شد." not in done.data["text"]
-    assert "دانلود فایل متنی" in done.data["text"]
+    assert "دانلود فایل متنی" not in done.data["text"]
+    completion_events = [
+        event for event in normal_events
+        if event.type == "progress" and event.data.get("stage") == "completed"
+    ]
+    assert completion_events
+    assert all("دانلود فایل متنی" not in event.data.get("text", "") for event in completion_events)
     assert store.saved == []
 
     download_context = FakeContext("download-1", {"artifact_store": store})
