@@ -270,6 +270,16 @@ class AudioIntelligenceAgent(BaseAgent):
                     )
                     return
 
+                audio_state = session.state.setdefault("audio_intelligence", {})
+                audio_state["last_downloadable_report"] = {
+                    "url": report_url,
+                    "filename": filename,
+                    "operation": pending_report.get("operation"),
+                    "asset_id": pending_report.get("asset_id"),
+                    "source_filenames": names,
+                }
+                audio_state.pop("pending_download_report", None)
+
                 yield AgentEvent(
                     type="artifact",
                     data={
@@ -386,7 +396,6 @@ class AudioIntelligenceAgent(BaseAgent):
         audio_state = session.state.setdefault("audio_intelligence", {})
         audio_state.pop("pending_download_report", None)
         source_filenames = self._report_source_filenames(result)
-        pending_report = None
         report_export_error = False
         if report is not None:
             source_parts = [self._safe_report_source_stem(name) for name in source_filenames]
@@ -400,49 +409,15 @@ class AudioIntelligenceAgent(BaseAgent):
             else:
                 report_filename = report["filename"]
 
-            pending_report = {
+            # Prepare a report in session state, but don't create an Artifact for
+            # ordinary Q&A. Only an explicit download request writes the file.
+            audio_state["pending_download_report"] = {
                 "content": report["content"],
                 "filename": report_filename,
                 "operation": result.get("operation"),
                 "asset_id": result.get("asset_id"),
                 "source_filenames": source_filenames,
             }
-            report_url, saved_filename, file_format = self._save_report(
-                report["content"],
-                filename=report_filename,
-                artifact_store=artifact_store,
-            )
-            if report_url:
-                audio_state["last_downloadable_report"] = {
-                    "url": report_url,
-                    "filename": saved_filename,
-                    "operation": result.get("operation"),
-                    "asset_id": result.get("asset_id"),
-                    "source_filenames": source_filenames,
-                }
-                audio_state.pop("pending_download_report", None)
-                yield AgentEvent(
-                    type="artifact",
-                    data={
-                        "type": "file",
-                        "title": saved_filename,
-                        "url": report_url,
-                        "agent_id": context.agent_id,
-                        "meta": {
-                            "kind": "audio_report",
-                            "operation": result.get("operation"),
-                            "asset_id": result.get("asset_id"),
-                            "format": file_format,
-                            "source_filename": (
-                                source_filenames[0] if len(source_filenames) == 1 else ""
-                            ),
-                            "source_filenames": source_filenames,
-                        },
-                    },
-                )
-            else:
-                audio_state["pending_download_report"] = pending_report
-                report_export_error = True
 
         answer = result.get("answer")
         batch_results = result.get("batch_results")
@@ -515,7 +490,53 @@ class AudioIntelligenceAgent(BaseAgent):
             )
             transcript_text = str(result.get("transcript_text") or "").strip()
             operation = str(result.get("operation") or "").strip().lower()
-            if summary_text:
+            if operation == "language":
+                language_result = result.get("language")
+                primary = (
+                    language_result.get("primary", {})
+                    if isinstance(language_result, dict)
+                    else {}
+                )
+                language_value = (
+                    primary.get("language")
+                    if isinstance(primary, dict)
+                    else None
+                ) or (
+                    language_result.get("language")
+                    if isinstance(language_result, dict)
+                    else language_result if isinstance(language_result, str) else None
+                )
+                if isinstance(language_value, str) and language_value.strip():
+                    language_code = language_value.strip()
+                    language_labels = {
+                        "fa": "فارسی",
+                        "en": "انگلیسی",
+                        "ar": "عربی",
+                        "az": "آذربایجانی",
+                        "tr": "ترکی",
+                        "ru": "روسی",
+                        "fr": "فرانسوی",
+                        "de": "آلمانی",
+                        "es": "اسپانیایی",
+                        "zh": "چینی",
+                        "hi": "هندی",
+                        "ur": "اردو",
+                        "it": "ایتالیایی",
+                        "pt": "پرتغالی",
+                        "ja": "ژاپنی",
+                        "ko": "کره‌ای",
+                    }
+                    language_key = language_code.casefold().split("-", 1)[0]
+                    display_language = language_labels.get(language_key, language_code)
+                    done_data["text"] = f"زبان گفتار تشخیص‌داده‌شده: {display_language}"
+                    confidence = primary.get("confidence") if isinstance(primary, dict) else None
+                    if isinstance(confidence, (int, float)):
+                        done_data["text"] += f" (میزان اطمینان: {confidence * 100:.1f}٪)"
+                else:
+                    done_data["text"] = (
+                        "عملیات تشخیص زبان اجرا شد، اما Provider زبان قابل تشخیصی برنگرداند."
+                    )
+            elif summary_text:
                 done_data["text"] = summary_text
             elif transcript_text and operation == "transcribe":
                 done_data["text"] = transcript_text
@@ -540,9 +561,9 @@ class AudioIntelligenceAgent(BaseAgent):
                 "stage": "completed",
                 "percent": 100,
                 "text": (
-                    "تحلیل صوتی تمام شد؛ فایل متنی نتیجه پیوست شده است."
-                    if report is not None and not report_export_error
-                    else "تحلیل صوتی با موفقیت انجام شد."
+                    "تحلیل صوتی با موفقیت انجام شد."
+                    if not report_export_error
+                    else "تحلیل صوتی انجام شد، اما ذخیره گزارش با خطا مواجه شد."
                 ),
                 "execution_id": context.execution_id,
             },
@@ -798,8 +819,10 @@ class AudioIntelligenceAgent(BaseAgent):
                 detail = str(answer["answer"]).strip()
             elif isinstance(summary, dict) and str(summary.get("summary") or "").strip():
                 detail = str(summary["summary"]).strip()
+            elif single.get("transcript_text") and result.get("operation") == "transcribe":
+                detail = str(single.get("transcript_text") or "").strip()
             elif single.get("transcript_text"):
-                detail = "رونویسی آماده است؛ متن کامل در گزارش پیوست قرار دارد."
+                detail = "رونویسی آماده است؛ برای دریافت گزارش متنی کامل، «دانلود فایل متنی» را درخواست کنید."
             else:
                 detail = "پردازش انجام شد؛ جزئیات در گزارش پیوست قرار دارد."
             if len(detail) > 1400:
