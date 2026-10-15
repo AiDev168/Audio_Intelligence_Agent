@@ -719,7 +719,8 @@ def test_report_is_created_only_after_explicit_download_request(monkeypatch):
     assert "تبدیل گفتار به متن با موفقیت انجام شد." not in done.data["text"]
     assert "دانلود فایل متنی" not in done.data["text"]
     completion_events = [
-        event for event in normal_events
+        event
+        for event in normal_events
         if event.type == "progress" and event.data.get("stage") == "completed"
     ]
     assert completion_events
