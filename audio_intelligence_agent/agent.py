@@ -163,7 +163,10 @@ class AudioIntelligenceAgent(BaseAgent):
             yield AgentEvent(
                 type="error",
                 data={
-                    "text": "گزارشی برای دانلود در این نشست آماده نیست. ابتدا فایل صوتی را تحلیل کنید.",
+                    "text": (
+                        "گزارشی برای دانلود در این نشست آماده نیست. "
+                        "ابتدا فایل صوتی را تحلیل کنید."
+                    ),
                     "execution_id": context.execution_id,
                     "error_code": "audio_report_not_available",
                 },
@@ -439,11 +442,17 @@ class AudioIntelligenceAgent(BaseAgent):
         if pending_report is not None:
             if len(source_filenames) == 1:
                 download_hint = (
-                    f"برای دریافت گزارش فایل «{source_filenames[0]}»، پیام «دانلود گزارش» را ارسال کنید."
+                    (
+                        f"برای دریافت گزارش فایل «{source_filenames[0]}»، "
+                        "پیام «دانلود گزارش» را ارسال کنید."
+                    )
                 )
             elif source_filenames:
                 download_hint = (
-                    f"برای دریافت گزارش {len(source_filenames)} فایل صوتی، پیام «دانلود گزارش» را ارسال کنید."
+                    (
+                        f"برای دریافت گزارش {len(source_filenames)} فایل صوتی، "
+                        "پیام «دانلود گزارش» را ارسال کنید."
+                    )
                 )
             else:
                 download_hint = "برای دریافت گزارش قابل دانلود، پیام «دانلود گزارش» را ارسال کنید."
@@ -457,7 +466,10 @@ class AudioIntelligenceAgent(BaseAgent):
             data={
                 "stage": "completed",
                 "percent": 100,
-                "text": "تحلیل صوتی با موفقیت انجام شد؛ برای دریافت فایل، درخواست دانلود گزارش بدهید.",
+                "text": (
+                    "تحلیل صوتی با موفقیت انجام شد؛ "
+                    "برای دریافت فایل، درخواست دانلود گزارش بدهید."
+                ),
                 "execution_id": context.execution_id,
             },
         )
