@@ -797,41 +797,47 @@ def test_language_question_is_not_routed_to_transcription():
     assert service._resolve_operation("متن کامل ویدئو را پیاده کن", {}) == "transcribe"
 
 
-def test_video_audio_extraction_uses_threaded_ffmpeg(monkeypatch, tmp_path):
-    import subprocess
-
-    import audio_intelligence_agent.service as service_module
-
+def test_video_media_is_passed_to_core_without_agent_ffmpeg(monkeypatch, tmp_path):
     source = tmp_path / "clip.mp4"
     source.write_bytes(b"fake video container")
 
-    monkeypatch.setattr(service_module.shutil, "which", lambda _name: "ffmpeg-test")
+    class VideoFileAccess:
+        def resolve(self, url: str) -> str:
+            assert url == "/storage/clip.mp4"
+            return str(source)
 
-    thread_calls = []
-    original_to_thread = service_module.asyncio.to_thread
-
-    async def track_to_thread(function, *args, **kwargs):
-        thread_calls.append(function)
-        return await original_to_thread(function, *args, **kwargs)
-
-    monkeypatch.setattr(service_module.asyncio, "to_thread", track_to_thread)
-
-    def fake_run(command, *, stdout, stderr, timeout, check):
-        assert command[0] == "ffmpeg-test"
-        assert stdout == subprocess.DEVNULL
-        assert stderr == subprocess.PIPE
-        assert timeout > 0
-        assert check is False
-        Path(command[-1]).write_bytes(b"RIFF" + (b"\\x00" * 64))
-        return subprocess.CompletedProcess(command, 0, stdout=b"", stderr=b"")
-
-    monkeypatch.setattr(service_module.subprocess, "run", fake_run)
-    extracted = asyncio.run(
-        AudioIntelligenceService._extract_audio_from_video(str(source), {})
+    service = AudioIntelligenceService(
+        core_service=object(),
+        file_access=VideoFileAccess(),
+        settings={},
     )
-    try:
-        assert Path(extracted).is_file()
-        assert Path(extracted).stat().st_size > 44
-        assert thread_calls == [fake_run]
-    finally:
-        Path(extracted).unlink(missing_ok=True)
+    captured = {}
+
+    async def capture_core_input(**kwargs):
+        captured.update(kwargs)
+        return {"operation": "transcribe", "transcript_text": "sample"}
+
+    monkeypatch.setattr(service, "_execute_single_from_path", capture_core_input)
+
+    result = asyncio.run(
+        service._execute_single(
+            message="این ویدئو را به متن تبدیل کن",
+            params={"audio_file": "/storage/clip.mp4"},
+            session=FakeSession(),
+            context=FakeContext(),
+        )
+    )
+
+    assert result["transcript_text"] == "sample"
+    assert captured["source_path"] == str(source)
+    assert captured["resolved_path"] == str(source)
+    assert captured["input_url"] == "/storage/clip.mp4"
+    assert AudioIntelligenceService._media_type(str(source)) == "video/mp4"
+    assert not hasattr(service, "_extract_audio_from_video")
+
+
+def test_video_without_extension_keeps_video_media_type_when_mime_is_unknown(tmp_path):
+    source = tmp_path / "clip"
+    source.write_bytes(b"fake video container")
+    assert AudioIntelligenceService._media_type(str(source)) == "audio/unknown"
+
