@@ -16,11 +16,15 @@ AGENT_MANIFEST = {
         "type": "object",
         "properties": {
             "audio_file": {
-                "type": "string",
+                "type": "array",
                 "format": "file",
-                "accept": "audio/*",
-                "title": "فایل صوتی",
-                "description": "یک یا چند فایل صوتی را برای تحلیل انتخاب کنید.",
+                "items": {"type": "string", "format": "file"},
+                "accept": "audio/*,video/*",
+                "title": "فایل‌های صوتی یا ویدئویی",
+                "description": (
+                    "یک یا چند فایل صوتی یا ویدئویی را انتخاب کنید؛ از ویدئو، ترک صوتیِ "
+                    "اولِ قابل استخراج برای تحلیل استفاده می‌شود."
+                ),
                 "multiple": True,
             },
             "operation": {
