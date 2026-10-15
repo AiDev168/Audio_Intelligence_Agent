@@ -2,20 +2,16 @@
 
 from __future__ import annotations
 
-import asyncio
 import hashlib
 import json
 import mimetypes
 import os
-import shutil
-import subprocess
-import tempfile
 from dataclasses import fields
 from typing import Any
 
 from audio_intelligence_agent.core_adapter import CoreCapabilityError, CoreCapabilityGateway
 
-TRANSCRIPTION_CACHE_SCHEMA_VERSION = "3"
+TRANSCRIPTION_CACHE_SCHEMA_VERSION = "4"
 
 
 CAPABILITY_NAMES = {
@@ -154,30 +150,21 @@ class AudioIntelligenceService:
         operation = self._resolve_operation(message, prepared)
         input_url = self._resolve_input_url(prepared, session)
         source_path = self.file_access.resolve(input_url)
-        extracted_path = None
-        try:
-            resolved_path = source_path
-            is_video = self._is_video_path(source_path)
-            if is_video:
-                extracted_path = await self._extract_audio_from_video(source_path, prepared)
-                resolved_path = extracted_path
-            return await self._execute_single_from_path(
-                message=message,
-                params=params,
-                session=session,
-                context=context,
-                operation=operation,
-                input_url=input_url,
-                source_path=source_path,
-                resolved_path=resolved_path,
-                source_is_video=is_video,
-            )
-        finally:
-            if extracted_path and os.path.isfile(extracted_path):
-                try:
-                    os.unlink(extracted_path)
-                except OSError:
-                    pass
+        is_video = self._is_video_path(source_path)
+        # Match Video Intelligence: pass the original protected media asset to
+        # the Core transcription capability and let the configured provider
+        # decode its audio stream. The Agent does not own a second FFmpeg path.
+        return await self._execute_single_from_path(
+            message=message,
+            params=params,
+            session=session,
+            context=context,
+            operation=operation,
+            input_url=input_url,
+            source_path=source_path,
+            resolved_path=source_path,
+            source_is_video=is_video,
+        )
 
     async def _execute_single_from_path(
         self,
@@ -199,7 +186,7 @@ class AudioIntelligenceService:
         core = CoreCapabilityGateway(self.core_service, context)
         media = core.core.media_asset_from_path(
             resolved_path,
-            media_type="audio/wav" if source_is_video else self._media_type(resolved_path),
+            media_type=self._media_type(resolved_path),
         )
 
         trace_enabled = os.getenv("AUDIO_INTELLIGENCE_TRACE", "").strip() == "1"
@@ -620,82 +607,6 @@ class AudioIntelligenceService:
             return True
         return str(mimetypes.guess_type(path)[0] or "").lower().startswith("video/")
 
-    @staticmethod
-    async def _extract_audio_from_video(path: str, settings: dict[str, Any]) -> str:
-        configured = str(
-            settings.get("ffmpeg_executable") or settings.get("ffmpeg_path") or ""
-        ).strip()
-        executable = (
-            configured
-            if configured and os.path.isfile(configured)
-            else shutil.which(configured or "ffmpeg")
-        )
-        if not executable:
-            raise ValueError(
-                "برای استخراج صدای ویدئو، FFmpeg باید روی سیستم میزبان نصب و در PATH باشد "
-                "یا مسیر آن در تنظیمات ffmpeg_path تعیین شود."
-            )
-
-        file_descriptor, output_path = tempfile.mkstemp(
-            prefix="audio-intelligence-",
-            suffix=".wav",
-        )
-        os.close(file_descriptor)
-        try:
-            timeout = float(settings.get("audio_extraction_timeout_seconds") or 3600)
-            command = [
-                executable,
-                "-nostdin",
-                "-hide_banner",
-                "-loglevel",
-                "error",
-                "-y",
-                "-i",
-                path,
-                "-map",
-                "0:a:0",
-                "-vn",
-                "-ac",
-                "1",
-                "-ar",
-                "16000",
-                "-c:a",
-                "pcm_s16le",
-                output_path,
-            ]
-            try:
-                completed = await asyncio.to_thread(
-                    subprocess.run,
-                    command,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.PIPE,
-                    timeout=timeout,
-                    check=False,
-                )
-            except subprocess.TimeoutExpired as exc:
-                raise ValueError("زمان مجاز استخراج صدا از ویدئو به پایان رسید.") from exc
-
-            diagnostic = (completed.stderr or b"").decode(
-                "utf-8",
-                errors="replace",
-            ).casefold()
-            output_is_valid = os.path.isfile(output_path) and os.path.getsize(output_path) > 44
-            if completed.returncode != 0 or not output_is_valid:
-                no_audio_stream = (
-                    "matches no streams" in diagnostic
-                    or "does not contain any stream" in diagnostic
-                    or "matches no streams" in diagnostic
-                )
-                if no_audio_stream:
-                    raise ValueError("این ویدئو ترک صوتی قابل استخراج ندارد.")
-                raise ValueError("استخراج صدا از ویدئو با FFmpeg ناموفق بود.")
-            return output_path
-        except BaseException:
-            try:
-                os.unlink(output_path)
-            except OSError:
-                pass
-            raise
 
     @staticmethod
     def _validate_storage_url(value: str) -> str:
@@ -704,9 +615,12 @@ class AudioIntelligenceService:
 
         return value
 
-    @staticmethod
-    def _media_type(path: str) -> str:
-        return mimetypes.guess_type(path)[0] or "audio/unknown"
+    @classmethod
+    def _media_type(cls, path: str) -> str:
+        guessed = mimetypes.guess_type(path)[0]
+        if guessed:
+            return guessed
+        return "video/unknown" if cls._is_video_path(path) else "audio/unknown"
 
     def _resolve_operation(self, message: str, params: dict[str, Any]) -> str:
         operation = str(params.get("operation") or "").strip().lower()
