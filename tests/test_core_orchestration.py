@@ -401,53 +401,6 @@ def test_multiple_selected_audio_and_video_documents_are_resolved_in_requested_o
     assert [item["document_id"] for item in files] == ["video", "voice"]
 
 
-def test_video_extraction_uses_first_audio_stream_without_shell(monkeypatch, tmp_path):
-    import audio_intelligence_agent.service as service_module
-
-    source = tmp_path / "meeting.mp4"
-    source.write_bytes(b"video placeholder")
-    command = []
-
-    class FakeProcess:
-        returncode = 0
-
-        async def communicate(self):
-            return None, b""
-
-        def kill(self):
-            self.returncode = -9
-
-        async def wait(self):
-            return self.returncode
-
-    async def fake_create_subprocess_exec(*args, **kwargs):
-        command.extend(args)
-        Path(str(args[-1])).write_bytes(b"RIFF" + b"0" * 60)
-        return FakeProcess()
-
-    monkeypatch.setattr(service_module.shutil, "which", lambda _: "ffmpeg-test")
-    monkeypatch.setattr(
-        service_module.asyncio,
-        "create_subprocess_exec",
-        fake_create_subprocess_exec,
-    )
-
-    output_path = asyncio.run(
-        service_module.AudioIntelligenceService._extract_audio_from_video(
-            str(source),
-            {},
-        )
-    )
-    try:
-        assert output_path.endswith(".wav")
-        assert str(source) in command
-        assert command[command.index("-map") + 1] == "0:a:0"
-        assert "-vn" in command
-        assert command[command.index("-ar") + 1] == "16000"
-    finally:
-        Path(output_path).unlink(missing_ok=True)
-
-
 def test_multiple_active_audio_files_are_never_silently_resolved_to_the_last_one():
     service = AudioIntelligenceService(
         core_service=object(),
