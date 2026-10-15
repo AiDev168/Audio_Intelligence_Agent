@@ -250,7 +250,7 @@ def test_transcription_cache_key_changes_with_provider_or_options():
     assert first != third
 
 
-def test_ask_downloadable_report_is_human_readable_markdown():
+def test_ask_downloadable_report_is_plain_text_and_contains_requested_answer():
     from types import SimpleNamespace
 
     from audio_intelligence_agent.agent import AudioIntelligenceAgent
@@ -259,55 +259,66 @@ def test_ask_downloadable_report_is_human_readable_markdown():
         "operation": "ask",
         "asset_id": "asset-1",
         "media_type": "audio/mpeg",
-        "transcript_text": "[0.00-11.47] متن صوت",
-        "evidence": {
-            "spans": [
-                {
-                    "interval": {"start": 0.0, "end": 11.47},
-                    "excerpt": "متن صوت",
-                }
-            ]
-        },
         "answer": {
             "question": "تحلیل کن",
             "answer": "این یک پاسخ مستند است.",
             "citations": [
                 {
                     "interval": {"start": 0.0, "end": 11.47},
-                    "excerpt": "متن صوت",
+                    "excerpt": "متن شاهد",
                 }
             ],
+        },
+        "evidence": {
+            "spans": [
+                {
+                    "interval": {"start": 0.0, "end": 11.47},
+                    "excerpt": "متن شاهد",
+                }
+            ]
         },
     }
 
     report = AudioIntelligenceAgent._build_downloadable_report(
         result,
         SimpleNamespace(execution_id="exec-1"),
+        request_text="این فایل را تحلیل کن",
     )
 
-    assert report["filename"] == "audio_ask_exec-1.md"
-    assert "# گزارش تحلیل صوتی" in report["content"]
-    assert "## پرسش" in report["content"]
-    assert "تحلیل کن" in report["content"]
-    assert "## پاسخ" in report["content"]
+    assert report["filename"] == "audio_result_ask_exec-1.txt"
+    assert report["filename"].endswith(".txt")
+    assert "درخواست کاربر:" in report["content"]
+    assert "این فایل را تحلیل کن" in report["content"]
+    assert "پاسخ تولیدشده:" in report["content"]
     assert "این یک پاسخ مستند است." in report["content"]
-    assert "## متن پیاده‌سازی‌شده" in report["content"]
-    assert "## شواهد و استنادها" in report["content"]
-    assert ".json" not in report["filename"]
+    assert "استنادها:" in report["content"]
+    assert "متن شاهد" in report["content"]
+    assert "# گزارش" not in report["content"]
+    assert '"operation":' not in report["content"]
 
 
-def test_non_ask_downloadable_report_keeps_legacy_structured_json():
+def test_transcription_export_is_plain_text_with_the_actual_transcript():
     from types import SimpleNamespace
 
     from audio_intelligence_agent.agent import AudioIntelligenceAgent
 
     report = AudioIntelligenceAgent._build_downloadable_report(
-        {"operation": "transcribe", "asset_id": "asset-1"},
+        {
+            "operation": "transcribe",
+            "asset_id": "asset-1",
+            "source_filename": "6.mp3",
+            "transcript_text": "[00:00-00:02] سلام، جلسه شروع شد.",
+        },
         SimpleNamespace(execution_id="exec-2"),
+        request_text="گفتار فایل را به متن تبدیل کن",
     )
 
-    assert report["filename"] == "audio_analysis_exec-2.json"
-    assert '"operation": "transcribe"' in report["content"]
+    assert report["filename"] == "audio_result_transcribe_exec-2.txt"
+    assert "درخواست کاربر:" in report["content"]
+    assert "گفتار فایل را به متن تبدیل کن" in report["content"]
+    assert "متن پیاده‌سازی‌شده:" in report["content"]
+    assert "[00:00-00:02] سلام، جلسه شروع شد." in report["content"]
+    assert '"operation":' not in report["content"]
 
 
 def test_multiple_selected_audio_documents_are_resolved_in_requested_order():
@@ -442,6 +453,7 @@ def test_natural_phrase_analyze_resolves_to_full_analysis():
     )
 
     assert service._resolve_operation("این فایل را تحلیل کن", {}) == "analyze"
+    assert service._resolve_operation("تحلیل کن", {}) == "analyze"
     assert service._resolve_operation("تحلیل کامل انجام بده", {}) == "analyze"
     assert service._resolve_operation("این صوت درباره چه چیزی است؟", {}) == "ask"
 
@@ -538,16 +550,19 @@ def test_report_is_created_only_after_explicit_download_request(monkeypatch):
 
         async def execute(self, *, message, params, session, context):
             return {
-                "operation": "ask",
+                "operation": "analyze",
                 "source_filename": "meeting.wav",
                 "asset_id": "asset-meeting",
                 "media_type": "audio/wav",
                 "transcript_text": "[0.00-1.00] hello",
-                "evidence": {"spans": []},
-                "answer": {
-                    "question": "What was said?",
-                    "answer": "The meeting starts now.",
-                    "citations": [],
+                "summary": {"summary": "The generated summary says the meeting starts now."},
+                "evidence": {
+                    "spans": [
+                        {
+                            "interval": {"start": 0.0, "end": 1.0},
+                            "excerpt": "hello",
+                        }
+                    ]
                 },
             }
 
@@ -597,16 +612,28 @@ def test_report_is_created_only_after_explicit_download_request(monkeypatch):
     pending = session.state["audio_intelligence"]["pending_download_report"]
     assert pending["source_filenames"] == ["meeting.wav"]
     assert pending["filename"].startswith("meeting_")
+    assert pending["filename"].endswith(".txt")
+    assert "درخواست کاربر:" in pending["content"]
+    assert "Analyze the recording" in pending["content"]
+    assert "The generated summary says the meeting starts now." in pending["content"]
+    assert "[0.00-1.00] hello" in pending["content"]
+    assert agent_module.AudioIntelligenceAgent._is_download_request("دانلود فایل متنی", {})
     done = next(event for event in normal_events if event.type == "done")
-    assert "دانلود گزارش" in done.data["text"]
+    assert "The generated summary says the meeting starts now." in done.data["text"]
+    assert "تبدیل گفتار به متن با موفقیت انجام شد." not in done.data["text"]
+    assert "دانلود فایل متنی" in done.data["text"]
+    assert store.saved == []
 
     download_context = FakeContext("download-1", {"artifact_store": store})
-    download_events = asyncio.run(collect_events("دانلود گزارش", download_context))
+    download_events = asyncio.run(collect_events("دانلود فایل متنی", download_context))
     artifacts = [event for event in download_events if event.type == "artifact"]
 
     assert len(artifacts) == 1
     assert len(store.saved) == 1
     assert store.saved[0][0].startswith("meeting_")
+    assert store.saved[0][0].endswith(".txt")
+    assert "The generated summary says the meeting starts now." in store.saved[0][1]
+    assert "Analyze the recording" in store.saved[0][1]
     assert artifacts[0].data["meta"]["source_filename"] == "meeting.wav"
     assert artifacts[0].data["title"].startswith("meeting_")
     assert any(
