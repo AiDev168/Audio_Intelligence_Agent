@@ -730,6 +730,32 @@ class AudioIntelligenceAgent(BaseAgent):
                     lines.append("")
                     generated_output_found = True
 
+            optional_capabilities = (
+                ("diarization_status", "تفکیک گویندگان", "diarization_diagnostic"),
+                ("speaker_analysis_status", "تحلیل گویندگان", "speaker_analysis_diagnostic"),
+                ("audio_events_status", "تشخیص رویدادهای صوتی", "audio_events_diagnostic"),
+            )
+            status_labels = {
+                "ok": "انجام شد",
+                "unavailable": "در دسترس نیست",
+                "skipped_diarization_unavailable": "اجرا نشد؛ تفکیک گویندگان در دسترس نبود",
+            }
+            statuses = [
+                (status_key, label, diagnostic_key)
+                for status_key, label, diagnostic_key in optional_capabilities
+                if item.get(status_key)
+            ]
+            if statuses:
+                lines.extend(["وضعیت قابلیت‌های تکمیلی:", ""])
+                for status_key, label, diagnostic_key in statuses:
+                    status = str(item.get(status_key))
+                    lines.append(f"{label}: {status_labels.get(status, status)}")
+                    diagnostic = str(item.get(diagnostic_key) or "").strip()
+                    if diagnostic:
+                        lines.append(f"  دلیل: {diagnostic}")
+                    generated_output_found = True
+                lines.append("")
+
         batch_results = result.get("batch_results")
         if isinstance(batch_results, list):
             for index, batch_item in enumerate(batch_results, start=1):
