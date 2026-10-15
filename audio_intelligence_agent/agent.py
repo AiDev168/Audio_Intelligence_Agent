@@ -463,8 +463,6 @@ class AudioIntelligenceAgent(BaseAgent):
                 )
             else:
                 done_data["text"] = "تحلیل اجرا شد، اما متن قابل نمایش تولید نشد."
-        else:
-            done_data["text"] = "Audio analysis completed."
 
         if pending_report is not None:
             if len(source_filenames) == 1:
@@ -478,7 +476,10 @@ class AudioIntelligenceAgent(BaseAgent):
                     "پیام «دانلود فایل متنی» را ارسال کنید."
                 )
             else:
-                download_hint = "برای دریافت فایل متنی نتیجه، پیام «دانلود فایل متنی» را ارسال کنید."
+                download_hint = (
+                    "برای دریافت فایل متنی نتیجه، "
+                    "پیام «دانلود فایل متنی» را ارسال کنید."
+                )
             done_data["download_hint"] = download_hint
             done_data["text"] = (
                 f"{done_data.get('text', 'تحلیل صوتی انجام شد.')}\n\n{download_hint}"
@@ -490,7 +491,8 @@ class AudioIntelligenceAgent(BaseAgent):
                 "stage": "completed",
                 "percent": 100,
                 "text": (
-                    "تحلیل صوتی با موفقیت انجام شد؛ برای دریافت نتیجه در قالب TXT، درخواست «دانلود فایل متنی» بدهید."
+                    "تحلیل صوتی با موفقیت انجام شد؛ "
+                    "برای دریافت نتیجه در قالب TXT، درخواست «دانلود فایل متنی» بدهید."
                 ),
                 "execution_id": context.execution_id,
             },
