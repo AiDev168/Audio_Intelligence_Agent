@@ -663,7 +663,7 @@ class AudioIntelligenceService:
                     raise ValueError("این ویدئو ترک صوتی قابل استخراج ندارد.")
                 raise ValueError("استخراج صدا از ویدئو با FFmpeg ناموفق بود.")
             return output_path
-        except asyncio.TimeoutError as exc:
+        except TimeoutError as exc:
             if process is not None and process.returncode is None:
                 process.kill()
                 await process.wait()
