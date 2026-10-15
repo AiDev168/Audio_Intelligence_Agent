@@ -512,3 +512,101 @@ def test_manifest_does_not_offer_audio_events_without_a_provider():
 
     operation = AGENT_MANIFEST["params"]["properties"]["operation"]
     assert "audio_events" not in operation["enum"]
+
+def test_report_is_created_only_after_explicit_download_request(monkeypatch):
+    from dataclasses import dataclass
+    from types import SimpleNamespace
+
+    import audio_intelligence_agent.agent as agent_module
+
+    @dataclass
+    class FakeEvent:
+        type: str
+        data: dict
+
+    class FakeArtifactStore:
+        def __init__(self):
+            self.saved = []
+
+        def save(self, filename, content):
+            self.saved.append((filename, content))
+            return "/storage/artifacts/" + filename
+
+    class FakeService:
+        def __init__(self, *, core_service, file_access, settings):
+            pass
+
+        async def execute(self, *, message, params, session, context):
+            return {
+                "operation": "ask",
+                "source_filename": "meeting.wav",
+                "asset_id": "asset-meeting",
+                "media_type": "audio/wav",
+                "transcript_text": "[0.00-1.00] hello",
+                "evidence": {"spans": []},
+                "answer": {
+                    "question": "What was said?",
+                    "answer": "The meeting starts now.",
+                    "citations": [],
+                },
+            }
+
+    class FakeContext:
+        def __init__(self, execution_id, capabilities):
+            self.execution_id = execution_id
+            self.agent_id = "audio_intelligence"
+            self.capabilities = capabilities
+
+        def is_cancelled(self):
+            return False
+
+    class Session:
+        def __init__(self):
+            self.state = {}
+
+    monkeypatch.setattr(agent_module, "AgentEvent", FakeEvent)
+    monkeypatch.setattr(agent_module, "AudioIntelligenceService", FakeService)
+
+    agent = object.__new__(agent_module.AudioIntelligenceAgent)
+    agent.settings = {}
+    session = Session()
+    store = FakeArtifactStore()
+    normal_context = FakeContext(
+        "analysis-1",
+        {
+            "agent_file_access": object(),
+            "artifact_store": store,
+            "media_intelligence_core": object(),
+        },
+    )
+
+    async def collect_events(message, context):
+        return [
+            event
+            async for event in agent.run_with_context(
+                message=message,
+                params={},
+                session=session,
+                context=context,
+            )
+        ]
+
+    normal_events = asyncio.run(collect_events("Analyze the recording", normal_context))
+    assert not [event for event in normal_events if event.type == "artifact"]
+    assert store.saved == []
+    pending = session.state["audio_intelligence"]["pending_download_report"]
+    assert pending["source_filenames"] == ["meeting.wav"]
+    assert pending["filename"].startswith("meeting_")
+    done = next(event for event in normal_events if event.type == "done")
+    assert "دانلود گزارش" in done.data["text"]
+
+    download_context = FakeContext("download-1", {"artifact_store": store})
+    download_events = asyncio.run(collect_events("دانلود گزارش", download_context))
+    artifacts = [event for event in download_events if event.type == "artifact"]
+
+    assert len(artifacts) == 1
+    assert len(store.saved) == 1
+    assert store.saved[0][0].startswith("meeting_")
+    assert artifacts[0].data["meta"]["source_filename"] == "meeting.wav"
+    assert artifacts[0].data["title"].startswith("meeting_")
+    assert any(event.type == "done" and "meeting.wav" in event.data["text"] for event in download_events)
