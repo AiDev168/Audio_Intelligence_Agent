@@ -8,6 +8,7 @@ import json
 import mimetypes
 import os
 import shutil
+import subprocess
 import tempfile
 from dataclasses import fields
 from typing import Any
@@ -640,10 +641,9 @@ class AudioIntelligenceService:
             suffix=".wav",
         )
         os.close(file_descriptor)
-        process = None
         try:
             timeout = float(settings.get("audio_extraction_timeout_seconds") or 3600)
-            process = await asyncio.create_subprocess_exec(
+            command = [
                 executable,
                 "-nostdin",
                 "-hide_banner",
@@ -662,34 +662,35 @@ class AudioIntelligenceService:
                 "-c:a",
                 "pcm_s16le",
                 output_path,
-                stdout=asyncio.subprocess.DEVNULL,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            _, stderr = await asyncio.wait_for(process.communicate(), timeout=timeout)
-            diagnostic = (stderr or b"").decode("utf-8", errors="replace").casefold()
+            ]
+            try:
+                completed = await asyncio.to_thread(
+                    subprocess.run,
+                    command,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.PIPE,
+                    timeout=timeout,
+                    check=False,
+                )
+            except subprocess.TimeoutExpired as exc:
+                raise ValueError("زمان مجاز استخراج صدا از ویدئو به پایان رسید.") from exc
+
+            diagnostic = (completed.stderr or b"").decode(
+                "utf-8",
+                errors="replace",
+            ).casefold()
             output_is_valid = os.path.isfile(output_path) and os.path.getsize(output_path) > 44
-            if process.returncode != 0 or not output_is_valid:
+            if completed.returncode != 0 or not output_is_valid:
                 no_audio_stream = (
                     "matches no streams" in diagnostic
                     or "does not contain any stream" in diagnostic
+                    or "matches no streams" in diagnostic
                 )
                 if no_audio_stream:
                     raise ValueError("این ویدئو ترک صوتی قابل استخراج ندارد.")
                 raise ValueError("استخراج صدا از ویدئو با FFmpeg ناموفق بود.")
             return output_path
-        except TimeoutError as exc:
-            if process is not None and process.returncode is None:
-                process.kill()
-                await process.wait()
-            try:
-                os.unlink(output_path)
-            except OSError:
-                pass
-            raise ValueError("زمان مجاز استخراج صدا از ویدئو به پایان رسید.") from exc
         except BaseException:
-            if process is not None and process.returncode is None:
-                process.kill()
-                await process.wait()
             try:
                 os.unlink(output_path)
             except OSError:
@@ -727,12 +728,30 @@ class AudioIntelligenceService:
         text = f"{message} {params.get('query') or ''}".lower()
         if any(token in text for token in ("summary", "summarize", "خلاصه", "خلاصه کن")):
             return "summary"
-        if any(token in text for token in ("transcript", "transcribe", "پیاده", "متن")):
+        if any(
+            token in text
+            for token in ("language", "زبان", "چه زبانی", "به چه زبانی")
+        ):
+            return "language"
+        if any(
+            token in text
+            for token in (
+                "transcript",
+                "transcribe",
+                "speech to text",
+                "transcription",
+                "پیاده",
+                "رونویسی",
+                "تبدیل گفتار به متن",
+                "تبدیل صوت به متن",
+                "تبدیل به متن",
+                "متن کامل",
+                "متن پیاده",
+            )
+        ):
             return "transcribe"
         if any(token in text for token in ("who spoke", "speaker", "گوینده", "چه کسی صحبت")):
             return "speaker_analysis"
-        if any(token in text for token in ("language", "زبان")):
-            return "language"
         if any(token in text for token in ("chapter", "topic", "فصل", "موضوع")):
             return "topics"
         if any(
