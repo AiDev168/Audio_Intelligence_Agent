@@ -822,7 +822,10 @@ class AudioIntelligenceAgent(BaseAgent):
             elif single.get("transcript_text") and result.get("operation") == "transcribe":
                 detail = str(single.get("transcript_text") or "").strip()
             elif single.get("transcript_text"):
-                detail = "رونویسی آماده است؛ برای دریافت گزارش متنی کامل، «دانلود فایل متنی» را درخواست کنید."
+                detail = (
+                    "رونویسی آماده است؛ برای دریافت گزارش متنی کامل، "
+                    "«دانلود فایل متنی» را درخواست کنید."
+                )
             else:
                 detail = "پردازش انجام شد؛ جزئیات در گزارش پیوست قرار دارد."
             if len(detail) > 1400:
