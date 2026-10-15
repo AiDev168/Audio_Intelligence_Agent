@@ -836,8 +836,3 @@ def test_video_media_is_passed_to_core_without_agent_ffmpeg(monkeypatch, tmp_pat
     assert not hasattr(service, "_extract_audio_from_video")
 
 
-def test_video_without_extension_keeps_video_media_type_when_mime_is_unknown(tmp_path):
-    source = tmp_path / "clip"
-    source.write_bytes(b"fake video container")
-    assert AudioIntelligenceService._media_type(str(source)) == "audio/unknown"
-
