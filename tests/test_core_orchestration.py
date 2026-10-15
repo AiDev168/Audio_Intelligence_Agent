@@ -833,5 +833,3 @@ def test_video_media_is_passed_to_core_without_agent_ffmpeg(monkeypatch, tmp_pat
     assert captured["input_url"] == "/storage/clip.mp4"
     assert AudioIntelligenceService._media_type(str(source)) == "video/mp4"
     assert not hasattr(service, "_extract_audio_from_video")
-
-
