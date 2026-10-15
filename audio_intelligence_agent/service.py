@@ -604,7 +604,6 @@ class AudioIntelligenceService:
             return True
         return str(mimetypes.guess_type(path)[0] or "").lower().startswith("video/")
 
-
     @staticmethod
     def _validate_storage_url(value: str) -> str:
         if not value.startswith("/storage/"):
