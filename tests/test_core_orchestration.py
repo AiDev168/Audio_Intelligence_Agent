@@ -622,7 +622,7 @@ def test_manifest_does_not_offer_audio_events_without_a_provider():
     assert "audio_events" not in operation["enum"]
 
 
-def test_report_is_attached_automatically_and_reused_on_download_request(monkeypatch):
+def test_report_is_prepared_but_only_exported_after_explicit_request(monkeypatch):
     from dataclasses import dataclass
 
     import audio_intelligence_agent.agent as agent_module
@@ -691,54 +691,147 @@ def test_report_is_attached_automatically_and_reused_on_download_request(monkeyp
         },
     )
 
-    async def collect_events(message, context):
+    async def collect_events(message, context, active_session=None):
         return [
             event
             async for event in agent.run_with_context(
                 message=message,
                 params={},
-                session=session,
+                session=active_session or session,
                 context=context,
             )
         ]
 
     normal_events = asyncio.run(collect_events("Analyze the recording", normal_context))
-    artifacts = [event for event in normal_events if event.type == "artifact"]
-    assert len(artifacts) == 1
-    assert len(store.saved) == 1
-    exported = session.state["audio_intelligence"]["last_downloadable_report"]
-    assert exported["source_filenames"] == ["meeting.wav"]
-    assert exported["filename"].startswith("meeting_")
-    assert exported["filename"].endswith(".txt")
-    assert "درخواست کاربر:" in store.saved[0][1]
-    assert "Analyze the recording" in store.saved[0][1]
-    assert "The generated summary says the meeting starts now." in store.saved[0][1]
-    assert "[0.00-1.00] hello" in store.saved[0][1]
-    assert isinstance(store.saved[0][1], str)
+    assert not [event for event in normal_events if event.type == "artifact"]
+    assert store.saved == []
+    pending = session.state["audio_intelligence"]["pending_download_report"]
+    assert pending["source_filenames"] == ["meeting.wav"]
+    assert pending["filename"].startswith("meeting_")
+    assert pending["filename"].endswith(".txt")
+    assert "درخواست کاربر:" in pending["content"]
+    assert "Analyze the recording" in pending["content"]
+    assert "The generated summary says the meeting starts now." in pending["content"]
+    assert "[0.00-1.00] hello" in pending["content"]
     assert agent_module.AudioIntelligenceAgent._is_download_request("دانلود فایل متنی", {})
     done = next(event for event in normal_events if event.type == "done")
     assert "The generated summary says the meeting starts now." in done.data["text"]
-    assert "تبدیل گفتار به متن با موفقیت انجام شد." not in done.data["text"]
-    assert "دانلود فایل متنی" not in done.data["text"]
+    assert "فایل متنی نتیجه پیوست شده است" not in done.data["text"]
+
     completion_events = [
         event
         for event in normal_events
         if event.type == "progress" and event.data.get("stage") == "completed"
     ]
     assert completion_events
-    assert all("دانلود فایل متنی" not in event.data.get("text", "") for event in completion_events)
-    assert artifacts[0].data["meta"]["source_filename"] == "meeting.wav"
-    assert artifacts[0].data["title"].startswith("meeting_")
-    assert artifacts[0].data["url"] == exported["url"]
+    assert all("پیوست شده است" not in event.data.get("text", "") for event in completion_events)
 
     download_context = FakeContext("download-1", {"artifact_store": store})
-    download_events = asyncio.run(collect_events("دانلود فایل متنی", download_context))
-    repeated_artifacts = [event for event in download_events if event.type == "artifact"]
+    download_events = asyncio.run(
+        collect_events("دانلود فایل متنی", download_context, active_session=session)
+    )
+    artifacts = [event for event in download_events if event.type == "artifact"]
+    assert len(artifacts) == 1
+    assert len(store.saved) == 1
+    assert "The generated summary says the meeting starts now." in store.saved[0][1]
+    exported = session.state["audio_intelligence"]["last_downloadable_report"]
+    assert exported["source_filenames"] == ["meeting.wav"]
+    assert exported["url"] == artifacts[0].data["url"]
+    assert artifacts[0].data["meta"]["source_filename"] == "meeting.wav"
+    assert artifacts[0].data["title"].startswith("meeting_")
+    assert "pending_download_report" not in session.state["audio_intelligence"]
 
+    repeat_events = asyncio.run(
+        collect_events(
+            "دانلود فایل متنی",
+            FakeContext("download-2", {"artifact_store": store}),
+            active_session=session,
+        )
+    )
+    repeated_artifacts = [event for event in repeat_events if event.type == "artifact"]
     assert len(repeated_artifacts) == 1
     assert len(store.saved) == 1
     assert repeated_artifacts[0].data["url"] == artifacts[0].data["url"]
     assert any(
         event.type == "done" and "از قبل آماده است" in event.data["text"]
-        for event in download_events
+        for event in repeat_events
     )
+
+    async def execute_language(self, *, message, params, session, context):
+        return {
+            "operation": "language",
+            "source_filename": "meeting.wav",
+            "asset_id": "asset-meeting",
+            "language": {"primary": {"language": "fa", "confidence": 0.98}},
+        }
+
+    monkeypatch.setattr(FakeService, "execute", execute_language)
+    language_session = Session()
+    language_events = asyncio.run(
+        collect_events(
+            "زبان متن چیست؟",
+            FakeContext(
+                "language-1",
+                {
+                    "agent_file_access": object(),
+                    "artifact_store": store,
+                    "media_intelligence_core": object(),
+                },
+            ),
+            active_session=language_session,
+        )
+    )
+    language_done = next(event for event in language_events if event.type == "done")
+    assert "فارسی" in language_done.data["text"]
+    assert "98.0٪" in language_done.data["text"]
+    assert not [event for event in language_events if event.type == "artifact"]
+
+
+def test_language_question_is_not_routed_to_transcription():
+    service = AudioIntelligenceService(
+        core_service=object(),
+        file_access=FakeFileAccess(),
+        settings={},
+    )
+    assert service._resolve_operation("زبان متن چیست؟", {}) == "language"
+    assert service._resolve_operation("متن کامل ویدئو را پیاده کن", {}) == "transcribe"
+
+
+def test_video_audio_extraction_uses_threaded_ffmpeg(monkeypatch, tmp_path):
+    import subprocess
+
+    import audio_intelligence_agent.service as service_module
+
+    source = tmp_path / "clip.mp4"
+    source.write_bytes(b"fake video container")
+
+    monkeypatch.setattr(service_module.shutil, "which", lambda _name: "ffmpeg-test")
+
+    thread_calls = []
+    original_to_thread = service_module.asyncio.to_thread
+
+    async def track_to_thread(function, *args, **kwargs):
+        thread_calls.append(function)
+        return await original_to_thread(function, *args, **kwargs)
+
+    monkeypatch.setattr(service_module.asyncio, "to_thread", track_to_thread)
+
+    def fake_run(command, *, stdout, stderr, timeout, check):
+        assert command[0] == "ffmpeg-test"
+        assert stdout == subprocess.DEVNULL
+        assert stderr == subprocess.PIPE
+        assert timeout > 0
+        assert check is False
+        Path(command[-1]).write_bytes(b"RIFF" + (b"\\x00" * 64))
+        return subprocess.CompletedProcess(command, 0, stdout=b"", stderr=b"")
+
+    monkeypatch.setattr(service_module.subprocess, "run", fake_run)
+    extracted = asyncio.run(
+        AudioIntelligenceService._extract_audio_from_video(str(source), {})
+    )
+    try:
+        assert Path(extracted).is_file()
+        assert Path(extracted).stat().st_size > 44
+        assert thread_calls == [fake_run]
+    finally:
+        Path(extracted).unlink(missing_ok=True)
