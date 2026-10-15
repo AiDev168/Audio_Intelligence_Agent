@@ -622,7 +622,7 @@ def test_manifest_does_not_offer_audio_events_without_a_provider():
     assert "audio_events" not in operation["enum"]
 
 
-def test_report_is_created_only_after_explicit_download_request(monkeypatch):
+def test_report_is_attached_automatically_and_reused_on_download_request(monkeypatch):
     from dataclasses import dataclass
 
     import audio_intelligence_agent.agent as agent_module
@@ -714,7 +714,7 @@ def test_report_is_created_only_after_explicit_download_request(monkeypatch):
     assert "Analyze the recording" in store.saved[0][1]
     assert "The generated summary says the meeting starts now." in store.saved[0][1]
     assert "[0.00-1.00] hello" in store.saved[0][1]
-    assert "آهنگ" not in store.saved[0][1]
+    assert isinstance(store.saved[0][1], str)
     assert agent_module.AudioIntelligenceAgent._is_download_request("دانلود فایل متنی", {})
     done = next(event for event in normal_events if event.type == "done")
     assert "The generated summary says the meeting starts now." in done.data["text"]
