@@ -469,16 +469,16 @@ class AudioIntelligenceAgent(BaseAgent):
         if pending_report is not None:
             if len(source_filenames) == 1:
                 download_hint = (
-                    f"برای دریافت گزارش فایل «{source_filenames[0]}»، "
-                    "پیام «دانلود گزارش» را ارسال کنید."
+                    f"برای دریافت فایل متنی نتیجهٔ «{source_filenames[0]}»، "
+                    "پیام «دانلود فایل متنی» را ارسال کنید."
                 )
             elif source_filenames:
                 download_hint = (
-                    f"برای دریافت گزارش {len(source_filenames)} فایل صوتی، "
-                    "پیام «دانلود گزارش» را ارسال کنید."
+                    f"برای دریافت فایل متنی نتایج {len(source_filenames)} فایل صوتی، "
+                    "پیام «دانلود فایل متنی» را ارسال کنید."
                 )
             else:
-                download_hint = "برای دریافت گزارش قابل دانلود، پیام «دانلود گزارش» را ارسال کنید."
+                download_hint = "برای دریافت فایل متنی نتیجه، پیام «دانلود فایل متنی» را ارسال کنید."
             done_data["download_hint"] = download_hint
             done_data["text"] = (
                 f"{done_data.get('text', 'تحلیل صوتی انجام شد.')}\n\n{download_hint}"
@@ -490,7 +490,7 @@ class AudioIntelligenceAgent(BaseAgent):
                 "stage": "completed",
                 "percent": 100,
                 "text": (
-                    "تحلیل صوتی با موفقیت انجام شد؛ برای دریافت فایل، درخواست دانلود گزارش بدهید."
+                    "تحلیل صوتی با موفقیت انجام شد؛ برای دریافت نتیجه در قالب TXT، درخواست «دانلود فایل متنی» بدهید."
                 ),
                 "execution_id": context.execution_id,
             },
