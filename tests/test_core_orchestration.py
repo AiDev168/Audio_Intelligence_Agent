@@ -609,4 +609,7 @@ def test_report_is_created_only_after_explicit_download_request(monkeypatch):
     assert store.saved[0][0].startswith("meeting_")
     assert artifacts[0].data["meta"]["source_filename"] == "meeting.wav"
     assert artifacts[0].data["title"].startswith("meeting_")
-    assert any(event.type == "done" and "meeting.wav" in event.data["text"] for event in download_events)
+    assert any(
+        event.type == "done" and "meeting.wav" in event.data["text"]
+        for event in download_events
+    )
