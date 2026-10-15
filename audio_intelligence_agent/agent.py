@@ -464,36 +464,12 @@ class AudioIntelligenceAgent(BaseAgent):
             else:
                 done_data["text"] = "تحلیل اجرا شد، اما متن قابل نمایش تولید نشد."
 
-        if pending_report is not None:
-            if len(source_filenames) == 1:
-                download_hint = (
-                    f"برای دریافت فایل متنی نتیجهٔ «{source_filenames[0]}»، "
-                    "پیام «دانلود فایل متنی» را ارسال کنید."
-                )
-            elif source_filenames:
-                download_hint = (
-                    f"برای دریافت فایل متنی نتایج {len(source_filenames)} فایل صوتی، "
-                    "پیام «دانلود فایل متنی» را ارسال کنید."
-                )
-            else:
-                download_hint = (
-                    "برای دریافت فایل متنی نتیجه، "
-                    "پیام «دانلود فایل متنی» را ارسال کنید."
-                )
-            done_data["download_hint"] = download_hint
-            done_data["text"] = (
-                f"{done_data.get('text', 'تحلیل صوتی انجام شد.')}\n\n{download_hint}"
-            )
-
         yield AgentEvent(
             type="progress",
             data={
                 "stage": "completed",
                 "percent": 100,
-                "text": (
-                    "تحلیل صوتی با موفقیت انجام شد؛ "
-                    "برای دریافت نتیجه در قالب TXT، درخواست «دانلود فایل متنی» بدهید."
-                ),
+                "text": "تحلیل صوتی با موفقیت انجام شد.",
                 "execution_id": context.execution_id,
             },
         )
@@ -692,7 +668,17 @@ class AudioIntelligenceAgent(BaseAgent):
             add_single_result(result)
 
         if not generated_output_found:
-            return None
+            lines.extend(
+                [
+                    "وضعیت نتیجه:",
+                    (
+                        "در اجرای فعلی خروجی متنی از Provider تحلیل دریافت نشد. "
+                        "برای جلوگیری از ایجاد فایل خالی، این گزارش وضعیت را ثبت می‌کند؛ "
+                        "فایل صوتی یا ویدئویی اصلی در گزارش قرار نمی‌گیرد."
+                    ),
+                    "",
+                ]
+            )
         content = "\n".join(lines).rstrip() + "\n"
         return {
             "content": content,
