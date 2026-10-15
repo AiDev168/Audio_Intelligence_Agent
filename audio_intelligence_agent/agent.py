@@ -118,8 +118,7 @@ class AudioIntelligenceAgent(BaseAgent):
         value = str(filename or "").replace(chr(92), "/").rsplit("/", 1)[-1]
         stem = value.rsplit(".", 1)[0] if "." in value else value
         safe = "".join(
-            character if character.isalnum() or character in "-_." else "_"
-            for character in stem
+            character if character.isalnum() or character in "-_." else "_" for character in stem
         ).strip("._-")
         return safe[:48] or "audio"
 
@@ -134,11 +133,13 @@ class AudioIntelligenceAgent(BaseAgent):
             yield AgentEvent(type="cancelled", data={"execution_id": context.execution_id})
             return
 
-        download_requested = self._is_download_request(
-            str(message or ""), dict(params or {})
-        )
-        if not download_requested and not str(message or "").strip() and not any(
-            str(params.get(key) or "").strip() for key in ("operation", "query", "audio_file")
+        download_requested = self._is_download_request(str(message or ""), dict(params or {}))
+        if (
+            not download_requested
+            and not str(message or "").strip()
+            and not any(
+                str(params.get(key) or "").strip() for key in ("operation", "query", "audio_file")
+            )
         ):
             yield AgentEvent(
                 type="error",
@@ -164,8 +165,7 @@ class AudioIntelligenceAgent(BaseAgent):
                 type="error",
                 data={
                     "text": (
-                        "گزارشی برای دانلود در این نشست آماده نیست. "
-                        "ابتدا فایل صوتی را تحلیل کنید."
+                        "گزارشی برای دانلود در این نشست آماده نیست. ابتدا فایل صوتی را تحلیل کنید."
                     ),
                     "execution_id": context.execution_id,
                     "error_code": "audio_report_not_available",
@@ -348,9 +348,7 @@ class AudioIntelligenceAgent(BaseAgent):
         source_filenames = self._report_source_filenames(result)
         pending_report = None
         if report is not None:
-            source_parts = [
-                self._safe_report_source_stem(name) for name in source_filenames
-            ]
+            source_parts = [self._safe_report_source_stem(name) for name in source_filenames]
             if len(source_parts) == 1:
                 report_filename = f"{source_parts[0]}_{report['filename']}"
             elif len(source_parts) > 1:
@@ -442,17 +440,13 @@ class AudioIntelligenceAgent(BaseAgent):
         if pending_report is not None:
             if len(source_filenames) == 1:
                 download_hint = (
-                    (
-                        f"برای دریافت گزارش فایل «{source_filenames[0]}»، "
-                        "پیام «دانلود گزارش» را ارسال کنید."
-                    )
+                    f"برای دریافت گزارش فایل «{source_filenames[0]}»، "
+                    "پیام «دانلود گزارش» را ارسال کنید."
                 )
             elif source_filenames:
                 download_hint = (
-                    (
-                        f"برای دریافت گزارش {len(source_filenames)} فایل صوتی، "
-                        "پیام «دانلود گزارش» را ارسال کنید."
-                    )
+                    f"برای دریافت گزارش {len(source_filenames)} فایل صوتی، "
+                    "پیام «دانلود گزارش» را ارسال کنید."
                 )
             else:
                 download_hint = "برای دریافت گزارش قابل دانلود، پیام «دانلود گزارش» را ارسال کنید."
@@ -467,8 +461,7 @@ class AudioIntelligenceAgent(BaseAgent):
                 "stage": "completed",
                 "percent": 100,
                 "text": (
-                    "تحلیل صوتی با موفقیت انجام شد؛ "
-                    "برای دریافت فایل، درخواست دانلود گزارش بدهید."
+                    "تحلیل صوتی با موفقیت انجام شد؛ برای دریافت فایل، درخواست دانلود گزارش بدهید."
                 ),
                 "execution_id": context.execution_id,
             },

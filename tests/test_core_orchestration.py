@@ -513,9 +513,9 @@ def test_manifest_does_not_offer_audio_events_without_a_provider():
     operation = AGENT_MANIFEST["params"]["properties"]["operation"]
     assert "audio_events" not in operation["enum"]
 
+
 def test_report_is_created_only_after_explicit_download_request(monkeypatch):
     from dataclasses import dataclass
-    from types import SimpleNamespace
 
     import audio_intelligence_agent.agent as agent_module
 
@@ -610,6 +610,5 @@ def test_report_is_created_only_after_explicit_download_request(monkeypatch):
     assert artifacts[0].data["meta"]["source_filename"] == "meeting.wav"
     assert artifacts[0].data["title"].startswith("meeting_")
     assert any(
-        event.type == "done" and "meeting.wav" in event.data["text"]
-        for event in download_events
+        event.type == "done" and "meeting.wav" in event.data["text"] for event in download_events
     )
