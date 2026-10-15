@@ -77,6 +77,40 @@ class AudioIntelligenceAgent(BaseAgent):
     else:
         manifest = AGENT_MANIFEST
 
+    @staticmethod
+    def _is_download_request(message: str, params: dict[str, Any]) -> bool:
+        if params.get("download_report") is True:
+            return True
+        operation = str(params.get("operation") or "").strip().casefold()
+        if operation in {"download", "download_report", "export_report"}:
+            return True
+        text = str(message or "").strip().casefold()
+        return any(term in text for term in ("دانلود", "download", "export report"))
+
+    @staticmethod
+    def _report_source_filenames(result: dict[str, Any]) -> list[str]:
+        batch_results = result.get("batch_results")
+        if isinstance(batch_results, list):
+            return list(
+                dict.fromkeys(
+                    str(item.get("filename") or "").strip()
+                    for item in batch_results
+                    if str(item.get("filename") or "").strip()
+                )
+            )
+        filename = str(result.get("source_filename") or "").strip()
+        return [filename] if filename else []
+
+    @staticmethod
+    def _safe_report_source_stem(filename: str) -> str:
+        value = str(filename or "").replace("\\\\", "/").rsplit("/", 1)[-1]
+        stem = value.rsplit(".", 1)[0] if "." in value else value
+        safe = "".join(
+            character if character.isalnum() or character in "-_." else "_"
+            for character in stem
+        ).strip("._-")
+        return safe[:48] or "audio"
+
     async def run_with_context(
         self,
         message: str,
@@ -88,7 +122,8 @@ class AudioIntelligenceAgent(BaseAgent):
             yield AgentEvent(type="cancelled", data={"execution_id": context.execution_id})
             return
 
-        if not str(message or "").strip() and not any(
+        download_requested = self._is_download_request(str(message or ""), dict(params or {}))
+        if not download_requested and not str(message or "").strip() and not any(
             str(params.get(key) or "").strip() for key in ("operation", "query", "audio_file")
         ):
             yield AgentEvent(
@@ -103,15 +138,34 @@ class AudioIntelligenceAgent(BaseAgent):
         file_access = context.capabilities.get("agent_file_access")
         artifact_store = context.capabilities.get("artifact_store")
         media_core = context.capabilities.get("media_intelligence_core")
-        missing = [
-            name
-            for name, value in (
+        pending_report = (
+            (getattr(session, "state", {}).get("audio_intelligence") or {}).get(
+                "pending_download_report"
+            )
+            if download_requested
+            else None
+        )
+        if download_requested and not isinstance(pending_report, dict):
+            yield AgentEvent(
+                type="error",
+                data={
+                    "text": "گزارشی برای دانلود در این نشست آماده نیست. ابتدا فایل صوتی را تحلیل کنید.",
+                    "execution_id": context.execution_id,
+                    "error_code": "audio_report_not_available",
+                },
+            )
+            return
+
+        required_capabilities = (
+            (("artifact_store", artifact_store),)
+            if download_requested
+            else (
                 ("agent_file_access", file_access),
                 ("artifact_store", artifact_store),
                 ("media_intelligence_core", media_core),
             )
-            if value is None
-        ]
+        )
+        missing = [name for name, value in required_capabilities if value is None]
         if missing:
             yield AgentEvent(
                 type="error",
@@ -123,15 +177,90 @@ class AudioIntelligenceAgent(BaseAgent):
             )
             return
 
+        if download_requested:
+            names = list(pending_report.get("source_filenames") or [])
+            source_label = "، ".join(names[:3])
+            if len(names) > 3:
+                source_label += f" و {len(names) - 3} فایل دیگر"
+            thinking_text = (
+                f"در حال آماده‌سازی گزارش قابل دانلود برای «{source_label}»..."
+                if source_label
+                else "در حال آماده‌سازی گزارش قابل دانلود..."
+            )
+        else:
+            thinking_text = "در حال آماده‌سازی تحلیل صوتی..."
+
         yield AgentEvent(
             type="thinking",
             data={
-                "text": "در حال آماده‌سازی تحلیل صوتی...",
+                "text": thinking_text,
                 "execution_id": context.execution_id,
             },
         )
 
         try:
+            if download_requested:
+                names = list(pending_report.get("source_filenames") or [])
+                source_label = "، ".join(names)
+                report_url, filename, file_format = self._save_report(
+                    str(pending_report.get("content") or ""),
+                    filename=str(pending_report.get("filename") or ""),
+                    artifact_store=artifact_store,
+                )
+                if not report_url:
+                    yield AgentEvent(
+                        type="error",
+                        data={
+                            "text": "ساخت فایل گزارش ناموفق بود؛ گزارش ذخیره نشد.",
+                            "execution_id": context.execution_id,
+                            "error_code": "audio_report_export_failed",
+                        },
+                    )
+                    return
+
+                yield AgentEvent(
+                    type="artifact",
+                    data={
+                        "type": "file",
+                        "title": filename,
+                        "url": report_url,
+                        "agent_id": context.agent_id,
+                        "meta": {
+                            "kind": "audio_report",
+                            "operation": pending_report.get("operation"),
+                            "asset_id": pending_report.get("asset_id"),
+                            "format": file_format,
+                            "source_filename": names[0] if len(names) == 1 else "",
+                            "source_filenames": names,
+                        },
+                    },
+                )
+                completion_text = (
+                    f"گزارش مربوط به «{source_label}» آماده دانلود است."
+                    if source_label
+                    else "گزارش صوتی آماده دانلود است."
+                )
+                yield AgentEvent(
+                    type="progress",
+                    data={
+                        "stage": "completed",
+                        "percent": 100,
+                        "text": completion_text,
+                        "execution_id": context.execution_id,
+                    },
+                )
+                yield AgentEvent(
+                    type="done",
+                    data={
+                        "execution_id": context.execution_id,
+                        "status": "completed",
+                        "operation": "download_report",
+                        "source_filenames": names,
+                        "text": completion_text,
+                    },
+                )
+                return
+
             service = AudioIntelligenceService(
                 core_service=media_core,
                 file_access=file_access,
@@ -197,27 +326,32 @@ class AudioIntelligenceAgent(BaseAgent):
             return
 
         report = self._build_downloadable_report(result, context)
+        audio_state = session.state.setdefault("audio_intelligence", {})
+        audio_state.pop("pending_download_report", None)
+        source_filenames = self._report_source_filenames(result)
+        pending_report = None
         if report is not None:
-            report_url, filename, file_format = self._save_report(
-                report["content"],
-                filename=report["filename"],
-                artifact_store=artifact_store,
-            )
-            if report_url:
-                yield AgentEvent(
-                    type="artifact",
-                    data={
-                        "type": "file",
-                        "title": filename,
-                        "url": report_url,
-                        "agent_id": context.agent_id,
-                        "meta": {
-                            "operation": result.get("operation"),
-                            "asset_id": result.get("asset_id"),
-                            "format": file_format,
-                        },
-                    },
-                )
+            source_parts = [
+                self._safe_report_source_stem(name) for name in source_filenames
+            ]
+            if len(source_parts) == 1:
+                report_filename = f"{source_parts[0]}_{report['filename']}"
+            elif len(source_parts) > 1:
+                prefix = "_and_".join(source_parts[:2])
+                if len(source_parts) > 2:
+                    prefix += f"_plus_{len(source_parts) - 2}_files"
+                report_filename = f"{prefix}_{report['filename']}"
+            else:
+                report_filename = report["filename"]
+
+            pending_report = {
+                "content": report["content"],
+                "filename": report_filename,
+                "operation": result.get("operation"),
+                "asset_id": result.get("asset_id"),
+                "source_filenames": source_filenames,
+            }
+            audio_state["pending_download_report"] = pending_report
 
         answer = result.get("answer")
         batch_results = result.get("batch_results")
@@ -288,12 +422,26 @@ class AudioIntelligenceAgent(BaseAgent):
         else:
             done_data["text"] = "Audio analysis completed."
 
+        if pending_report is not None:
+            if len(source_filenames) == 1:
+                download_hint = (
+                    f"برای دریافت گزارش فایل «{source_filenames[0]}»، پیام «دانلود گزارش» را ارسال کنید."
+                )
+            elif source_filenames:
+                download_hint = (
+                    f"برای دریافت گزارش {len(source_filenames)} فایل صوتی، پیام «دانلود گزارش» را ارسال کنید."
+                )
+            else:
+                download_hint = "برای دریافت گزارش قابل دانلود، پیام «دانلود گزارش» را ارسال کنید."
+            done_data["download_hint"] = download_hint
+            done_data["text"] = f"{done_data.get('text', 'تحلیل صوتی انجام شد.')}\\n\\n{download_hint}"
+
         yield AgentEvent(
             type="progress",
             data={
                 "stage": "completed",
                 "percent": 100,
-                "text": "تحلیل صوتی با موفقیت انجام شد.",
+                "text": "تحلیل صوتی با موفقیت انجام شد؛ برای دریافت فایل، درخواست دانلود گزارش بدهید.",
                 "execution_id": context.execution_id,
             },
         )
