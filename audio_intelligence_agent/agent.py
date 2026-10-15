@@ -493,18 +493,16 @@ class AudioIntelligenceAgent(BaseAgent):
             if operation == "language":
                 language_result = result.get("language")
                 primary = (
-                    language_result.get("primary", {})
-                    if isinstance(language_result, dict)
-                    else {}
+                    language_result.get("primary", {}) if isinstance(language_result, dict) else {}
                 )
                 language_value = (
-                    primary.get("language")
-                    if isinstance(primary, dict)
-                    else None
+                    primary.get("language") if isinstance(primary, dict) else None
                 ) or (
                     language_result.get("language")
                     if isinstance(language_result, dict)
-                    else language_result if isinstance(language_result, str) else None
+                    else language_result
+                    if isinstance(language_result, str)
+                    else None
                 )
                 if isinstance(language_value, str) and language_value.strip():
                     language_code = language_value.strip()
