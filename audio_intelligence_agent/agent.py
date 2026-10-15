@@ -85,7 +85,19 @@ class AudioIntelligenceAgent(BaseAgent):
         if operation in {"download", "download_report", "export_report"}:
             return True
         text = str(message or "").strip().casefold()
-        return any(term in text for term in ("دانلود", "download", "export report"))
+        return any(
+            term in text
+            for term in (
+                "دانلود گزارش",
+                "گزارش را دانلود",
+                "گزارش رو دانلود",
+                "دانلود خروجی",
+                "خروجی را دانلود",
+                "download report",
+                "download the report",
+                "export report",
+            )
+        )
 
     @staticmethod
     def _report_source_filenames(result: dict[str, Any]) -> list[str]:
@@ -103,7 +115,7 @@ class AudioIntelligenceAgent(BaseAgent):
 
     @staticmethod
     def _safe_report_source_stem(filename: str) -> str:
-        value = str(filename or "").replace("\\\\", "/").rsplit("/", 1)[-1]
+        value = str(filename or "").replace(chr(92), "/").rsplit("/", 1)[-1]
         stem = value.rsplit(".", 1)[0] if "." in value else value
         safe = "".join(
             character if character.isalnum() or character in "-_." else "_"
@@ -122,7 +134,9 @@ class AudioIntelligenceAgent(BaseAgent):
             yield AgentEvent(type="cancelled", data={"execution_id": context.execution_id})
             return
 
-        download_requested = self._is_download_request(str(message or ""), dict(params or {}))
+        download_requested = self._is_download_request(
+            str(message or ""), dict(params or {})
+        )
         if not download_requested and not str(message or "").strip() and not any(
             str(params.get(key) or "").strip() for key in ("operation", "query", "audio_file")
         ):
@@ -434,7 +448,9 @@ class AudioIntelligenceAgent(BaseAgent):
             else:
                 download_hint = "برای دریافت گزارش قابل دانلود، پیام «دانلود گزارش» را ارسال کنید."
             done_data["download_hint"] = download_hint
-            done_data["text"] = f"{done_data.get('text', 'تحلیل صوتی انجام شد.')}\\n\\n{download_hint}"
+            done_data["text"] = (
+                f"{done_data.get('text', 'تحلیل صوتی انجام شد.')}\n\n{download_hint}"
+            )
 
         yield AgentEvent(
             type="progress",
