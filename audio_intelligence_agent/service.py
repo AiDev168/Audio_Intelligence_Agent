@@ -639,10 +639,7 @@ class AudioIntelligenceService:
         text = f"{message} {params.get('query') or ''}".lower()
         if any(token in text for token in ("summary", "summarize", "خلاصه", "خلاصه کن")):
             return "summary"
-        if any(
-            token in text
-            for token in ("language", "زبان", "چه زبانی", "به چه زبانی")
-        ):
+        if any(token in text for token in ("language", "زبان", "چه زبانی", "به چه زبانی")):
             return "language"
         if any(
             token in text
