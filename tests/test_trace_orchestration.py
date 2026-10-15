@@ -109,9 +109,12 @@ class FakeCoreService:
 
 
 class FakeFileAccess:
+    def __init__(self, path):
+        self.path = path
+
     def resolve(self, url: str):
         assert url == "/storage/sample.wav"
-        return r"C:\sample.wav"
+        return str(self.path)
 
 
 class FakeSession:
@@ -128,11 +131,13 @@ class FakeContext:
     metadata: dict = field(default_factory=dict)
 
 
-def test_summary_orchestration_calls_transcription_before_semantic_stage():
+def test_summary_orchestration_calls_transcription_before_semantic_stage(tmp_path):
+    sample_path = tmp_path / "sample.wav"
+    sample_path.write_bytes(b"deterministic trace audio bytes")
     core = FakeCore()
     service = AudioIntelligenceService(
         core_service=FakeCoreService(core),
-        file_access=FakeFileAccess(),
+        file_access=FakeFileAccess(sample_path),
         settings={},
     )
 
@@ -157,7 +162,7 @@ def test_summary_orchestration_calls_transcription_before_semantic_stage():
 def test_trace_uses_protected_storage_reference():
     service = AudioIntelligenceService(
         core_service=object(),
-        file_access=FakeFileAccess(),
+        file_access=FakeFileAccess("unused"),
         settings={},
     )
 

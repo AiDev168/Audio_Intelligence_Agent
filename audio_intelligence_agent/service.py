@@ -9,9 +9,9 @@ import os
 from dataclasses import fields
 from typing import Any
 
-from audio_intelligence_agent.core_adapter import CoreCapabilityGateway
+from audio_intelligence_agent.core_adapter import CoreCapabilityError, CoreCapabilityGateway
 
-TRANSCRIPTION_CACHE_SCHEMA_VERSION = "2"
+TRANSCRIPTION_CACHE_SCHEMA_VERSION = "4"
 
 
 CAPABILITY_NAMES = {
@@ -93,10 +93,92 @@ class AudioIntelligenceService:
     ) -> dict[str, Any]:
         prepared = dict(self.settings)
         prepared.update(params or {})
+        audio_files = self._resolve_input_files(prepared, session)
+        operation = self._resolve_operation(message, prepared)
 
+        if len(audio_files) == 1:
+            single_params = dict(params or {})
+            single_params["audio_file"] = audio_files[0]["url"]
+            result = await self._execute_single(
+                message=message,
+                params=single_params,
+                session=session,
+                context=context,
+            )
+            result.setdefault("source_filename", audio_files[0]["name"])
+            return result
+
+        batch_results: list[dict[str, Any]] = []
+        for audio_file in audio_files:
+            if hasattr(context, "is_cancelled") and context.is_cancelled():
+                break
+            single_params = dict(params or {})
+            single_params["audio_file"] = audio_file["url"]
+            single_result = await self._execute_single(
+                message=message,
+                params=single_params,
+                session=session,
+                context=context,
+            )
+            batch_results.append(
+                {
+                    "filename": audio_file["name"],
+                    "document_id": audio_file["document_id"],
+                    "asset_id": single_result.get("asset_id"),
+                    "result": single_result,
+                }
+            )
+
+        return {
+            "operation": operation,
+            "batch_results": batch_results,
+            "asset_count": len(batch_results),
+            "asset_ids": [item["asset_id"] for item in batch_results if item.get("asset_id")],
+            "source_filenames": [item["filename"] for item in batch_results],
+        }
+
+    async def _execute_single(
+        self,
+        *,
+        message: str,
+        params: dict[str, Any],
+        session: Any,
+        context: Any,
+    ) -> dict[str, Any]:
+        prepared = dict(self.settings)
+        prepared.update(params or {})
         operation = self._resolve_operation(message, prepared)
         input_url = self._resolve_input_url(prepared, session)
-        resolved_path = self.file_access.resolve(input_url)
+        source_path = self.file_access.resolve(input_url)
+        # Match Video Intelligence: pass the original protected media asset to
+        # the Core transcription capability and let the configured provider
+        # decode its audio stream. The Agent does not own a second FFmpeg path.
+        return await self._execute_single_from_path(
+            message=message,
+            params=params,
+            session=session,
+            context=context,
+            operation=operation,
+            input_url=input_url,
+            source_path=source_path,
+            resolved_path=source_path,
+        )
+
+    async def _execute_single_from_path(
+        self,
+        *,
+        message: str,
+        params: dict[str, Any],
+        session: Any,
+        context: Any,
+        operation: str,
+        input_url: str,
+        source_path: str,
+        resolved_path: str,
+    ) -> dict[str, Any]:
+        prepared = dict(self.settings)
+        prepared.update(params or {})
+        prepared["audio_content_sha256"] = self._sha256_file(resolved_path)
 
         core = CoreCapabilityGateway(self.core_service, context)
         media = core.core.media_asset_from_path(
@@ -157,23 +239,40 @@ class AudioIntelligenceService:
 
         diarization = None
         if operation in {"diarize", "speaker_analysis", "analyze"}:
-            diarization = await self._get_diarization(core, media, prepared)
-            result["diarization"] = self._to_public(diarization)
+            try:
+                diarization = await self._get_diarization(core, media, prepared)
+                result["diarization_status"] = "ok"
+                result["diarization"] = self._to_public(diarization)
+            except CoreCapabilityError as exc:
+                if operation != "analyze":
+                    raise
+                result["diarization_status"] = "unavailable"
+                result["diarization_diagnostic"] = exc.detail
 
             if operation in {"speaker_analysis", "analyze"}:
-                speaker_result = await core.execute(
-                    CAPABILITY_NAMES["speaker_analysis"],
-                    media,
-                    options={
-                        "transcription": transcription,
-                        "diarization": diarization,
-                        "speaker_options": _construct_option(
-                            core.core.SpeakerAttributionOptions,
-                            prepared.get("speaker_options"),
-                        ),
-                    },
-                )
-                result["speaker_analysis"] = self._to_public(speaker_result)
+                if diarization is None:
+                    result["speaker_analysis_status"] = "skipped_diarization_unavailable"
+                else:
+                    try:
+                        speaker_result = await core.execute(
+                            CAPABILITY_NAMES["speaker_analysis"],
+                            media,
+                            options={
+                                "transcription": transcription,
+                                "diarization": diarization,
+                                "speaker_options": _construct_option(
+                                    core.core.SpeakerAttributionOptions,
+                                    prepared.get("speaker_options"),
+                                ),
+                            },
+                        )
+                        result["speaker_analysis_status"] = "ok"
+                        result["speaker_analysis"] = self._to_public(speaker_result)
+                    except CoreCapabilityError as exc:
+                        if operation != "analyze":
+                            raise
+                        result["speaker_analysis_status"] = "unavailable"
+                        result["speaker_analysis_diagnostic"] = exc.detail
 
         if operation == "search":
             query_text = str(prepared.get("query") or message).strip()
@@ -232,17 +331,24 @@ class AudioIntelligenceService:
 
         events = None
         if operation in {"audio_events", "analyze"}:
-            events = await core.execute(
-                CAPABILITY_NAMES["audio_events"],
-                media,
-                options={
-                    "event_options": _construct_option(
-                        core.core.AudioEventOptions,
-                        prepared.get("audio_event_options"),
-                    )
-                },
-            )
-            result["audio_events"] = self._to_public(events)
+            try:
+                events = await core.execute(
+                    CAPABILITY_NAMES["audio_events"],
+                    media,
+                    options={
+                        "event_options": _construct_option(
+                            core.core.AudioEventOptions,
+                            prepared.get("audio_event_options"),
+                        )
+                    },
+                )
+                result["audio_events_status"] = "ok"
+                result["audio_events"] = self._to_public(events)
+            except CoreCapabilityError as exc:
+                if operation != "analyze":
+                    raise
+                result["audio_events_status"] = "unavailable"
+                result["audio_events_diagnostic"] = exc.detail
 
         if operation == "evidence":
             evidence_query = self._make_evidence_query(
@@ -311,8 +417,7 @@ class AudioIntelligenceService:
             )
             if trace_enabled:
                 print(
-                    "[AGENT TRACE] timeline:built "
-                    f"items={result['timeline']['item_count']}",
+                    f"[AGENT TRACE] timeline:built items={result['timeline']['item_count']}",
                     flush=True,
                 )
 
@@ -320,43 +425,132 @@ class AudioIntelligenceService:
             print("[AGENT TRACE] service:return", flush=True)
         return result
 
-    def _resolve_input_url(self, params: dict[str, Any], session: Any) -> str:
-        for key in ("audio_file", "input_file", "file"):
-            value = str(params.get(key) or "").strip()
-            if value:
-                return self._validate_storage_url(value)
-
+    def _resolve_input_files(
+        self,
+        params: dict[str, Any],
+        session: Any,
+    ) -> list[dict[str, str]]:
         active_files = session.get_active_files() if hasattr(session, "get_active_files") else []
-        if not active_files:
-            raise ValueError("لطفاً ابتدا یک فایل صوتی را بارگذاری کنید.")
-
-        selected_ids = {
-            str(item).strip()
-            for item in (params.get("selected_document_ids") or [])
-            if str(item).strip()
+        by_url = {
+            str(item.get("url") or ""): item for item in active_files if str(item.get("url") or "")
         }
+
+        for key in ("audio_files", "audio_file", "input_file", "file"):
+            raw_value = params.get(key)
+            if raw_value is None or raw_value == "":
+                continue
+            values = raw_value if isinstance(raw_value, (list, tuple)) else [raw_value]
+            resolved = []
+            for value in values:
+                if isinstance(value, dict):
+                    url = str(value.get("url") or value.get("value") or "").strip()
+                    supplied_name = str(value.get("name") or "").strip()
+                else:
+                    url = str(value or "").strip()
+                    supplied_name = ""
+                if not url:
+                    continue
+                url = self._validate_storage_url(url)
+                item = by_url.get(url, {})
+                if item and not self._is_supported_media_file(item):
+                    raise ValueError(
+                        f"فایل «{item.get('name') or url}» صوتی یا ویدئوییِ پشتیبانی‌شده نیست."
+                    )
+                name = supplied_name or str(item.get("name") or url.rsplit("/", 1)[-1])
+                resolved.append(
+                    {
+                        "url": url,
+                        "name": name,
+                        "document_id": str(item.get("document_id") or ""),
+                    }
+                )
+            if resolved:
+                return self._deduplicate_input_files(resolved)
+
+        raw_selected = params.get("selected_document_ids") or []
+        if isinstance(raw_selected, str):
+            selected_ids = [raw_selected.strip()] if raw_selected.strip() else []
+        else:
+            selected_ids = list(
+                dict.fromkeys(str(item).strip() for item in raw_selected if str(item).strip())
+            )
         if selected_ids:
-            selected_audio = [
-                item
+            by_id = {
+                str(item.get("document_id") or ""): item
                 for item in active_files
-                if str(item.get("document_id") or "") in selected_ids
-                and self._is_audio_file(item)
+                if str(item.get("document_id") or "")
+            }
+            missing = [item for item in selected_ids if item not in by_id]
+            if missing:
+                raise ValueError(
+                    "یک یا چند فایل انتخاب‌شده دیگر در نشست فعال نیستند؛ "
+                    "فهرست «اسناد من» را تازه کنید."
+                )
+            selected_audio = [by_id[item] for item in selected_ids]
+            not_audio = [
+                str(item.get("name") or "فایل")
+                for item in selected_audio
+                if not self._is_supported_media_file(item)
             ]
-            if len(selected_audio) == 1:
-                return self._validate_storage_url(str(selected_audio[0].get("url") or ""))
-            if len(selected_audio) > 1:
-                raise ValueError("لطفاً فقط یک فایل صوتی را برای تحلیل انتخاب کنید.")
-            raise ValueError("فایل انتخاب‌شده برای تحلیل صوتی معتبر نیست؛ یک فایل صوتی انتخاب کنید.")
+            if not_audio:
+                raise ValueError(
+                    "فقط فایل‌های صوتی یا ویدئویی دارای صدای قابل استخراج را انتخاب کنید: "
+                    + "، ".join(not_audio[:5])
+                )
+            return self._deduplicate_input_files(
+                [
+                    {
+                        "url": self._validate_storage_url(str(item.get("url") or "")),
+                        "name": str(item.get("name") or "فایل صوتی"),
+                        "document_id": str(item.get("document_id") or ""),
+                    }
+                    for item in selected_audio
+                ]
+            )
 
-        audio_files = [item for item in active_files if self._is_audio_file(item)]
-        if audio_files:
-            return self._validate_storage_url(str(audio_files[-1].get("url") or ""))
+        audio_files = [item for item in active_files if self._is_supported_media_file(item)]
+        if len(audio_files) == 1:
+            item = audio_files[0]
+            return [
+                {
+                    "url": self._validate_storage_url(str(item.get("url") or "")),
+                    "name": str(item.get("name") or "فایل صوتی"),
+                    "document_id": str(item.get("document_id") or ""),
+                }
+            ]
+        if len(audio_files) > 1:
+            raise ValueError(
+                "چند فایل صوتی یا ویدئویی در نشست وجود دارد. برای جلوگیری از تحلیل فایل اشتباه، "
+                "از «اسناد من» یک یا چند فایل را انتخاب کنید."
+            )
+        raise ValueError("لطفاً ابتدا یک فایل صوتی یا ویدئویی دارای ترک صوتی را انتخاب کنید.")
 
-        raise ValueError("لطفاً ابتدا یک فایل صوتی را بارگذاری کنید.")
+    @staticmethod
+    def _deduplicate_input_files(files: list[dict[str, str]]) -> list[dict[str, str]]:
+        unique: dict[str, dict[str, str]] = {}
+        for item in files:
+            unique.setdefault(item["url"], item)
+        if not unique:
+            raise ValueError("لطفاً حداقل یک فایل صوتی را برای تحلیل انتخاب کنید.")
+        return list(unique.values())
+
+    def _resolve_input_url(self, params: dict[str, Any], session: Any) -> str:
+        files = self._resolve_input_files(params, session)
+        if len(files) != 1:
+            raise ValueError("برای این مرحله باید دقیقاً یک فایل صوتی مشخص شده باشد.")
+        return files[0]["url"]
+
+    @staticmethod
+    def _sha256_file(path: str) -> str:
+        digest = hashlib.sha256()
+        with open(path, "rb") as handle:
+            for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                digest.update(chunk)
+        return digest.hexdigest()
 
     @staticmethod
     def _is_audio_file(item: dict[str, Any]) -> bool:
-        mime = str(item.get("mime") or "").strip().lower()
+        mime = str(item.get("mime") or item.get("mime_type") or "").strip().lower()
         if mime.startswith("audio/"):
             return True
         for value in (item.get("name"), item.get("url")):
@@ -366,15 +560,63 @@ class AudioIntelligenceService:
         return False
 
     @staticmethod
+    def _is_video_file(item: dict[str, Any]) -> bool:
+        mime = str(item.get("mime") or item.get("mime_type") or "").strip().lower()
+        if mime.startswith("video/"):
+            return True
+        video_extensions = {
+            ".3g2",
+            ".3gp",
+            ".avi",
+            ".flv",
+            ".m2ts",
+            ".m4v",
+            ".mkv",
+            ".mov",
+            ".mp4",
+            ".mpe",
+            ".mpeg",
+            ".mpg",
+            ".mts",
+            ".mxf",
+            ".ogv",
+            ".ts",
+            ".vob",
+            ".webm",
+            ".wmv",
+        }
+        for value in (item.get("name"), item.get("url")):
+            extension = os.path.splitext(str(value or "").split("?", 1)[0])[1].lower()
+            if extension in video_extensions:
+                return True
+            guessed = mimetypes.guess_type(str(value or ""))[0]
+            if guessed and guessed.startswith("video/"):
+                return True
+        return False
+
+    @classmethod
+    def _is_supported_media_file(cls, item: dict[str, Any]) -> bool:
+        return cls._is_audio_file(item) or cls._is_video_file(item)
+
+    @classmethod
+    def _is_video_path(cls, path: str) -> bool:
+        if cls._is_video_file({"name": os.path.basename(path), "url": path}):
+            return True
+        return str(mimetypes.guess_type(path)[0] or "").lower().startswith("video/")
+
+    @staticmethod
     def _validate_storage_url(value: str) -> str:
         if not value.startswith("/storage/"):
             raise ValueError("این ایجنت فقط فایل‌های بارگذاری‌شده در فضای امن سامانه را می‌پذیرد.")
 
         return value
 
-    @staticmethod
-    def _media_type(path: str) -> str:
-        return mimetypes.guess_type(path)[0] or "audio/unknown"
+    @classmethod
+    def _media_type(cls, path: str) -> str:
+        guessed = mimetypes.guess_type(path)[0]
+        if guessed:
+            return guessed
+        return "video/unknown" if cls._is_video_path(path) else "audio/unknown"
 
     def _resolve_operation(self, message: str, params: dict[str, Any]) -> str:
         operation = str(params.get("operation") or "").strip().lower()
@@ -396,14 +638,42 @@ class AudioIntelligenceService:
         text = f"{message} {params.get('query') or ''}".lower()
         if any(token in text for token in ("summary", "summarize", "خلاصه", "خلاصه کن")):
             return "summary"
-        if any(token in text for token in ("transcript", "transcribe", "پیاده", "متن")):
+        if any(token in text for token in ("language", "زبان", "چه زبانی", "به چه زبانی")):
+            return "language"
+        if any(
+            token in text
+            for token in (
+                "transcript",
+                "transcribe",
+                "speech to text",
+                "transcription",
+                "پیاده",
+                "رونویسی",
+                "تبدیل گفتار به متن",
+                "تبدیل صوت به متن",
+                "تبدیل به متن",
+                "متن کامل",
+                "متن پیاده",
+            )
+        ):
             return "transcribe"
         if any(token in text for token in ("who spoke", "speaker", "گوینده", "چه کسی صحبت")):
             return "speaker_analysis"
-        if any(token in text for token in ("language", "زبان")):
-            return "language"
         if any(token in text for token in ("chapter", "topic", "فصل", "موضوع")):
             return "topics"
+        if any(
+            token in text
+            for token in (
+                "analyze",
+                "analysis",
+                "تحلیل کن",
+                "تحلیل کامل",
+                "آنالیز",
+                "بررسی کامل",
+                "کل فایل را تحلیل",
+            )
+        ):
+            return "analyze"
         return "ask"
 
     async def _get_transcription(self, core, media, prepared, session, context):
@@ -429,8 +699,8 @@ class AudioIntelligenceService:
         if trace_enabled:
             print(
                 "[AGENT TRACE] transcription:core_execute:done "
-                f"segments={len(getattr(result, "segments", ()))}, "
-                f"language={getattr(result, "language", None)!s}",
+                f"segments={len(getattr(result, 'segments', ()))}, "
+                f"language={getattr(result, 'language', None)!s}",
                 flush=True,
             )
         if cache_enabled:
@@ -503,6 +773,7 @@ class AudioIntelligenceService:
         payload = {
             "schema_version": TRANSCRIPTION_CACHE_SCHEMA_VERSION,
             "asset_id": media.asset_id,
+            "content_sha256": prepared.get("audio_content_sha256"),
             "capability": CAPABILITY_NAMES["transcription"],
             "provider": policy.get(CAPABILITY_NAMES["transcription"]),
             "options": options,
@@ -541,7 +812,7 @@ class AudioIntelligenceService:
                 provenance=provenance,
             )
         except Exception:
-            state.get("assets", {}).pop(media.asset_id, None)
+            (state.get("assets") or {}).pop(cache_key, None)
             return None
 
     async def _get_diarization(self, core, media, prepared):

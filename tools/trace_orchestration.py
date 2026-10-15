@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import sys
+import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -99,9 +100,7 @@ class FakeCore:
         return FakeMedia(media_type=media_type)
 
     async def execute(self, capability: str, media: FakeMedia, *, options: dict[str, Any]):
-        self.trace.append(
-            f"CORE.execute capability={capability} asset={media.asset_id}"
-        )
+        self.trace.append(f"CORE.execute capability={capability} asset={media.asset_id}")
 
         if capability == "transcription":
             return FakeTranscription(
@@ -129,12 +128,13 @@ class FakeCoreService:
 
 
 class FakeFileAccess:
-    def __init__(self, trace: list[str]):
+    def __init__(self, trace: list[str], path: Path):
         self.trace = trace
+        self.path = path
 
     def resolve(self, url: str) -> str:
         self.trace.append(f"FILE_ACCESS.resolve url={url}")
-        return r"C:\trace-audio\sample.wav"
+        return str(self.path)
 
 
 class FakeSession:
@@ -154,19 +154,24 @@ class FakeContext:
 async def run(operation: str) -> None:
     trace: list[str] = []
     core = FakeCore(trace)
-    service = AudioIntelligenceService(
-        core_service=FakeCoreService(core),
-        file_access=FakeFileAccess(trace),
-        settings={},
-    )
-
     print("[TRACE 00] request operation=", operation)
-    result = await service.execute(
-        message=operation,
-        params={"operation": operation, "audio_file": "/storage/sample.wav"},
-        session=FakeSession(),
-        context=FakeContext(),
-    )
+
+    # Hashing now validates cache identity against real bytes, even in this
+    # model-free trace. The temporary fixture is never decoded or sent anywhere.
+    with tempfile.TemporaryDirectory(prefix="audio-intelligence-trace-") as directory:
+        sample_path = Path(directory) / "sample.wav"
+        sample_path.write_bytes(b"deterministic trace audio bytes")
+        service = AudioIntelligenceService(
+            core_service=FakeCoreService(core),
+            file_access=FakeFileAccess(trace, sample_path),
+            settings={},
+        )
+        result = await service.execute(
+            message=operation,
+            params={"operation": operation, "audio_file": "/storage/sample.wav"},
+            session=FakeSession(),
+            context=FakeContext(),
+        )
 
     print("[TRACE 99] result operation=", result["operation"])
     for index, item in enumerate(trace, start=1):
