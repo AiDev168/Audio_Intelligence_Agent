@@ -161,7 +161,7 @@ class AudioIntelligenceAgent(BaseAgent):
         file_access = context.capabilities.get("agent_file_access")
         artifact_store = context.capabilities.get("artifact_store")
         media_core = context.capabilities.get("media_intelligence_core")
-        audio_state = (getattr(session, "state", {}).get("audio_intelligence") or {})
+        audio_state = getattr(session, "state", {}).get("audio_intelligence") or {}
         pending_report = audio_state.get("pending_download_report") if download_requested else None
         previous_report = (
             audio_state.get("last_downloadable_report") if download_requested else None
