@@ -27,7 +27,7 @@ Implemented in this branch:
 - evidence preparation
 - grounded Q&A
 - canonical timeline summary
-- protected JSON analysis artifact
+- on-demand protected downloadable report, created only after explicit user request
 - standard progress/source/done/error/cancelled events
 - contract/unit tests for the plugin boundary
 
@@ -95,7 +95,7 @@ Supported user profiles: general, podcast, meeting, lecture, interview, call.
         +--> select minimum required Core capabilities
         +--> reuse compatible transcript cache
         +--> build timeline/evidence
-        +--> persist protected analysis artifact
+        +--> cache pending report data in the active session
         +--> emit standard AgentEvents
         |
         v
@@ -113,7 +113,7 @@ Input parameters may include audio_file, operation and query.
 
 Operations: transcribe, language, diarize, speaker_analysis, search, topics, summary, entities, audio_events, evidence, ask and analyze.
 
-Outputs are standard text and protected file artifacts. Grounded answers emit a user-facing response in the Host chat and may also emit internal sources metadata.
+Normal analysis returns text in chat and caches report data in the active session. The Host saves and displays a downloadable artifact only after an explicit request such as «دانلود گزارش». Export filenames identify the source audio file or files. Grounded answers may also emit internal sources metadata.
 
 ## Independent trace before Host integration
 
